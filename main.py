@@ -20,7 +20,7 @@ DATA_DIR = BASE_DIR / "data"              # dokumen sumber (.txt, .md, .pdf)
 DB_DIR = BASE_DIR / "chroma_db"           # database vektor (dibuat otomatis)
 
 EMBED_MODEL = "paraphrase-multilingual-MiniLM-L12-v2"  # mendukung bahasa Indonesia
-LLM_MODEL = "gemma4:e4b"                  # laptop RAM 8GB: "gemma4:e2b" | RAM 24GB+: "gemma4:26b"
+LLM_MODEL = "gemma4:e2b"                   # laptop RAM 8GB: "gemma4:e2b" | RAM 24GB+: "gemma4:26b"
 CHUNK_SIZE = 1000                         # panjang tiap potongan (karakter)
 CHUNK_OVERLAP = 200                       # tumpang tindih antar potongan
 TOP_K = 3                                 # jumlah potongan yang diambil per pertanyaan
