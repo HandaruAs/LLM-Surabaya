@@ -25,6 +25,10 @@ CHUNK_SIZE = 1000                         # panjang tiap potongan (karakter)
 CHUNK_OVERLAP = 200                       # tumpang tindih antar potongan
 TOP_K = 3                                 # jumlah potongan yang diambil per pertanyaan
 
+NUM_CTX = 4096                            # context window; kecil = hemat RAM, cukup untuk TOP_K=3
+THINK = False                             # False = tanpa mode "thinking", jawaban lebih cepat
+SHOW_CONTEXT = False                      # True = tampilkan potongan yang diambil (untuk debugging)
+
 SYSTEM_PROMPT = """Kamu adalah asisten edukasi keuangan untuk masyarakat Surabaya.
 Aturan:
 - Jawab HANYA berdasarkan konteks yang diberikan.
@@ -32,6 +36,26 @@ Aturan:
 - Jangan merekomendasikan produk investasi atau perusahaan tertentu.
 - Gunakan bahasa Indonesia yang sederhana dan jelas.
 - Akhiri dengan pengingat singkat bahwa ini bukan nasihat keuangan profesional."""
+
+# ---------- Muat model LLM lebih dulu ----------
+# Gemma dimuat SEBELUM model embedding (PyTorch) supaya keduanya tidak berebut RAM.
+def warm_up_llm():
+    print(f"Memuat model {LLM_MODEL} ke memori, tunggu sebentar...")
+    try:
+        ollama.chat(
+            model=LLM_MODEL,
+            messages=[{"role": "user", "content": "hi"}],
+            options={"num_ctx": NUM_CTX, "num_predict": 1},
+            think=THINK,
+            keep_alive=0,
+        )
+    except Exception as e:
+        print(f"[Error] Gagal memuat model: {e}")
+        sys.exit(1)
+
+
+if len(sys.argv) == 1:  # hanya saat mode tanya-jawab, bukan saat 'index'
+    warm_up_llm()
 
 # ---------- Database vektor ----------
 embed_fn = embedding_functions.SentenceTransformerEmbeddingFunction(model_name=EMBED_MODEL)
@@ -86,6 +110,11 @@ def ask(question: str) -> str:
     docs = results["documents"][0]
     sources = sorted({m["sumber"] for m in results["metadatas"][0]})
 
+    if SHOW_CONTEXT:
+        print("\n[DEBUG] Potongan yang diambil:")
+        for i, (doc, dist) in enumerate(zip(docs, results["distances"][0]), start=1):
+            print(f"  {i}. (jarak {dist:.3f}) {doc[:150]}...")
+
     context = "\n\n---\n\n".join(docs)
     user_prompt = f"Konteks:\n{context}\n\nPertanyaan: {question}"
 
@@ -95,6 +124,9 @@ def ask(question: str) -> str:
             {"role": "system", "content": SYSTEM_PROMPT},
             {"role": "user", "content": user_prompt},
         ],
+        options={"num_ctx": NUM_CTX},
+        think=THINK,
+        keep_alive=0,
     )
     answer = response["message"]["content"]
     return f"{answer}\n\nSumber: {', '.join(sources)}"
@@ -112,7 +144,12 @@ def chat_loop():
             continue
         if question.lower() in {"keluar", "exit", "quit"}:
             break
-        print(f"\nBot: {ask(question)}\n")
+        try:
+            print(f"\nBot: {ask(question)}\n")
+        except ollama.ResponseError as e:
+            print(f"\n[Error dari Ollama] {e.error}\n")
+        except Exception as e:  # supaya chatbot tidak langsung crash
+            print(f"\n[Error] {e}\n")
 
 
 if __name__ == "__main__":
