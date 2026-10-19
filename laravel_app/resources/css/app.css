@@ -1,0 +1,56 @@
+@import "tailwindcss";
+
+@source "../views/**/*.blade.php";
+
+:root {
+  color-scheme: light dark;
+  --side-w: 19rem;
+  --paper: #f3f5f9;
+  --card: #ffffff;
+  --ink: #0e1f3a;
+  --mute: #5a6a82;
+  --line: #d8dfea;
+  --brand: #1c4fd0;
+  --tint: #eaf0fc;
+  --gold: #b8861b;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --paper: #0a111f;
+    --card: #101a2d;
+    --ink: #e7edf8;
+    --mute: #93a3bc;
+    --line: #223048;
+    --brand: #6e9bff;
+    --tint: #15244a;
+    --gold: #e2b24c;
+  }
+}
+
+@theme inline {
+  --font-sans: 'Plus Jakarta Sans', ui-sans-serif, system-ui, sans-serif;
+  --font-serif: 'Source Serif 4', ui-serif, Georgia, serif;
+  --color-paper: var(--paper);
+  --color-card: var(--card);
+  --color-ink: var(--ink);
+  --color-mute: var(--mute);
+  --color-line: var(--line);
+  --color-brand: var(--brand);
+  --color-tint: var(--tint);
+  --color-gold: var(--gold);
+}
+
+@keyframes sweep {
+  0% { transform: translateX(-100%); }
+  100% { transform: translateX(300%); }
+}
+.sweep { animation: sweep 1.3s ease-in-out infinite; }
+@media (prefers-reduced-motion: reduce) { .sweep { animation: none; } }
+
+@layer base {
+  :focus-visible {
+    outline: 2px solid var(--brand);
+    outline-offset: 2px;
+  }
+}
