@@ -1,37 +1,30 @@
 <?php
 
+use App\Http\Controllers\Admin\AuthController;
+use App\Http\Controllers\Admin\DocumentController;
 use Illuminate\Support\Facades\Route;
 
 // Halaman chat. Semua data (kirim pesan, riwayat) lewat routes/api.php -> /api/...
 Route::view('/', 'chat')->name('chat');
 
-Route::post('/chat', function (Request $request) {
-    $data = $request->validate([
-        'message' => ['required', 'string', 'max:2000'],
-        'history' => ['sometimes', 'array', 'max:20'],
-        'lang' => ['sometimes', 'in:id,en'],
-    ]);
+// Tolak endpoint lama; seluruh fitur chat kini melalui /api/*.
+Route::post('/chat', fn () => abort(404));
 
-    try {
-        $res = Http::timeout(60)->acceptJson()->post(
-            rtrim(config('services.llm.base_url', 'http://127.0.0.1:8001'), '/') . '/chat',
-            [
-                'question' => $data['message'],
-                'history' => $data['history'] ?? [],
-                'lang' => $data['lang'] ?? 'id',
-            ]
-        );
+Route::prefix('admin')->name('admin.')->group(function () {
+    Route::middleware('guest')->group(function () {
+        Route::get('/login', [AuthController::class, 'create'])->name('login');
+        Route::post('/login', [AuthController::class, 'store'])
+            ->middleware('throttle:admin-login')
+            ->name('login.store');
+    });
 
-        if ($res->failed()) {
-            return response()->json(['error' => 'Server LLM error (' . $res->status() . ').'], 502);
-        }
-
-        return response()->json([
-            'answer' => (string) $res->json('answer', ''),
-            'sources' => $res->json('sources', []),
-            'suggestions' => $res->json('suggestions', []),
-        ]);
-    } catch (Throwable $e) {
-        return response()->json(['error' => 'Tidak bisa terhubung ke server LLM.'], 503);
-    }
-})->name('chat.ask');
+    Route::middleware('auth')->group(function () {
+        Route::view('/', 'admin.dashboard')->name('dashboard');
+        Route::get('/documents', [DocumentController::class, 'index'])->name('documents.index');
+        Route::post('/documents', [DocumentController::class, 'store'])->name('documents.store');
+        Route::delete('/documents/{document}', [DocumentController::class, 'destroy'])
+            ->whereNumber('document')
+            ->name('documents.destroy');
+        Route::post('/logout', [AuthController::class, 'destroy'])->name('logout');
+    });
+});

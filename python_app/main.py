@@ -10,13 +10,14 @@ import sys
 from pathlib import Path
 
 import ollama
+from openpyxl import load_workbook
 from pypdf import PdfReader
 from sentence_transformers import SentenceTransformer
 
 try:
-    from .db import count_chunks, index_document, search_chunks
+    from .db import count_chunks, delete_admin_document, index_admin_document, index_document, search_chunks
 except ImportError:
-    from db import count_chunks, index_document, search_chunks
+    from db import count_chunks, delete_admin_document, index_admin_document, index_document, search_chunks
 
 
 EMBED_MODEL = "paraphrase-multilingual-MiniLM-L12-v2"
@@ -90,10 +91,53 @@ if __name__ == "__main__":
 
 # ---------- Tahap 1: memproses dokumen ----------
 def read_file(path: Path) -> str:
-    if path.suffix.lower() == ".pdf":
+    suffix = path.suffix.lower()
+    if suffix == ".pdf":
         reader = PdfReader(str(path))
         return "\n".join(page.extract_text() or "" for page in reader.pages)
+    if suffix == ".xlsx":
+        workbook = load_workbook(path, read_only=True, data_only=True)
+        lines = []
+        for worksheet in workbook.worksheets:
+            lines.append(f"[Sheet: {worksheet.title}]")
+            for row in worksheet.iter_rows(values_only=True):
+                values = [str(value).strip() for value in row if value is not None and str(value).strip()]
+                if values:
+                    lines.append(" | ".join(values))
+        workbook.close()
+        return "\n".join(lines) if any(line.startswith("[Sheet:") for line in lines) and any(" | " in line for line in lines) else ""
     return path.read_text(encoding="utf-8")
+
+
+def delete_uploaded_document(document_id: int) -> bool:
+    return delete_admin_document(document_id)
+
+
+def index_uploaded_document(document_id: int, filename: str, content: bytes) -> dict[str, int]:
+    suffix = Path(filename).suffix.lower()
+    if suffix not in {".pdf", ".xlsx"}:
+        raise ValueError("Format dokumen tidak didukung.")
+
+    import tempfile
+
+    with tempfile.TemporaryDirectory() as temp_dir:
+        path = Path(temp_dir) / f"document{suffix}"
+        path.write_bytes(content)
+        text = read_file(path)
+
+    chunks = list(chunk_text(text))
+    if not chunks:
+        raise ValueError("Dokumen tidak berisi teks yang dapat diekstrak.")
+
+    model = get_embedding_model()
+    chunks_with_embeddings = []
+    for start in range(0, len(chunks), EMBED_BATCH_SIZE):
+        batch = chunks[start : start + EMBED_BATCH_SIZE]
+        vectors = model.encode(batch, batch_size=EMBED_BATCH_SIZE).tolist()
+        chunks_with_embeddings.extend(zip(batch, vectors))
+
+    saved_count = index_admin_document(document_id, filename, chunks_with_embeddings)
+    return {"chunks": saved_count}
 
 
 def chunk_text(text: str):
@@ -134,6 +178,10 @@ def generate_answer(question: str, history: list[dict] | None = None) -> tuple[s
     records = search_chunks(embed_text(question), top_k=TOP_K)
     context = "\n\n---\n\n".join(record["content"] for record in records)
     sources = sorted({record["filename"] for record in records})
+    source_records = [
+        {key: record[key] for key in ("id", "filename", "content", "similarity")}
+        for record in records
+    ]
     source_names = [{"filename": name} for name in sources]
 
     if SHOW_CONTEXT:
@@ -163,12 +211,12 @@ def generate_answer(question: str, history: list[dict] | None = None) -> tuple[s
         think=THINK,
         keep_alive=0,
     )
-    return response["message"]["content"], source_names
+    return response["message"]["content"], source_records
 
 
 def ask(question: str) -> str:
     answer, sources = generate_answer(question)
-    filenames = [source["filename"] for source in sources]
+    filenames = sorted({source["filename"] for source in sources})
     if filenames:
         return f"{answer}\n\nSumber dokumen: {', '.join(filenames)}"
     return answer

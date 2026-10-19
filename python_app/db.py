@@ -56,6 +56,47 @@ def index_document(filename: str, chunks_with_embeddings: list[tuple[str, Any]])
     return len(chunks_with_embeddings)
 
 
+def index_admin_document(
+    document_id: int, filename: str, chunks_with_embeddings: list[tuple[str, Any]]
+) -> int:
+    """Replace an admin document's chunks using its stable external document ID."""
+    indexed_filename = f"admin:{document_id}:{Path(filename).name}"
+    previous_filename_pattern = f"admin:{document_id}:%"
+    with get_db_connection() as conn, conn.cursor() as cur:
+        cur.execute(
+            """INSERT INTO rag_documents (filename, indexed_at)
+               VALUES (%s, NOW())
+               ON CONFLICT (filename) DO UPDATE SET indexed_at = EXCLUDED.indexed_at
+               RETURNING id""",
+            (indexed_filename,),
+        )
+        indexed_document_id = cur.fetchone()[0]
+        cur.execute(
+            "DELETE FROM rag_documents WHERE filename LIKE %s AND id <> %s",
+            (previous_filename_pattern, indexed_document_id),
+        )
+        cur.execute("DELETE FROM rag_chunks WHERE document_id = %s", (indexed_document_id,))
+        cur.executemany(
+            """INSERT INTO rag_chunks (document_id, chunk_index, content, embedding)
+               VALUES (%s, %s, %s, %s)""",
+            [
+                (indexed_document_id, index, text, embedding)
+                for index, (text, embedding) in enumerate(chunks_with_embeddings)
+            ],
+        )
+    return len(chunks_with_embeddings)
+
+
+def delete_admin_document(document_id: int) -> bool:
+    """Remove indexed chunks for one admin document; chat snapshots remain intact."""
+    with get_db_connection() as conn, conn.cursor() as cur:
+        cur.execute(
+            "DELETE FROM rag_documents WHERE filename LIKE %s",
+            (f"admin:{document_id}:%",),
+        )
+        return cur.rowcount > 0
+
+
 def count_chunks() -> int:
     with get_db_connection() as conn, conn.cursor() as cur:
         cur.execute("SELECT COUNT(*) FROM rag_chunks")

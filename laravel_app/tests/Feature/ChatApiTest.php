@@ -36,6 +36,62 @@ class ChatApiTest extends TestCase
         Http::fake(['rag.test/chat' => Http::response($body, $status)]);
     }
 
+    public function test_admin_document_list_requires_authentication(): void
+    {
+        $this->get('/admin/documents')->assertRedirect('/admin/login');
+    }
+
+    public function test_admin_login_and_dashboard_require_authentication(): void
+    {
+        $this->get('/admin/login')->assertOk();
+        $this->get('/admin')->assertRedirect('/admin/login');
+        $this->post('/register')->assertNotFound();
+    }
+
+    public function test_admin_can_log_in_and_log_out(): void
+    {
+        $admin = \App\Models\User::factory()->create(['password' => 'CorrectHorseBattery1!']);
+
+        $this->post('/admin/login', ['email' => $admin->email, 'password' => 'CorrectHorseBattery1!'])
+            ->assertRedirect('/admin');
+        $this->assertAuthenticatedAs($admin);
+        $this->get('/admin')->assertOk();
+
+        $this->post('/admin/logout')->assertRedirect('/admin/login');
+        $this->assertGuest();
+    }
+
+    public function test_invalid_admin_credentials_do_not_authenticate(): void
+    {
+        $admin = \App\Models\User::factory()->create();
+
+        $this->from('/admin/login')
+            ->post('/admin/login', ['email' => $admin->email, 'password' => 'wrong'])
+            ->assertRedirect('/admin/login');
+        $this->assertGuest();
+    }
+
+    public function test_admin_login_is_rate_limited(): void
+    {
+        $admin = \App\Models\User::factory()->create();
+        foreach (range(1, 6) as $_) {
+            $this->post('/admin/login', ['email' => $admin->email, 'password' => 'wrong']);
+        }
+        $this->post('/admin/login', ['email' => $admin->email, 'password' => 'wrong'])
+            ->assertTooManyRequests();
+    }
+
+    public function test_public_registration_is_disabled(): void
+    {
+        $this->post('/register')->assertNotFound();
+    }
+
+    public function test_legacy_web_chat_endpoint_is_not_registered(): void
+    {
+        $this->postJson('/chat', ['message' => 'test'])
+            ->assertNotFound();
+    }
+
     public function test_send_message_creates_session_and_returns_answer(): void
     {
         $this->fakeRag();
