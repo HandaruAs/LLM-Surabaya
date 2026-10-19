@@ -26,6 +26,14 @@ from python_app.db import index_document
 
 
 class IndexDocumentTests(unittest.TestCase):
+    def test_chunk_text_limits_chunks_to_ninety_words(self):
+        from python_app.main import chunk_text
+
+        chunks = list(chunk_text("kata " * 200))
+        self.assertTrue(chunks)
+        self.assertLessEqual(max(len(chunk.split()) for chunk in chunks), 90)
+
+
     def test_search_chunks_casts_embedding_parameters_to_vector(self):
         from unittest.mock import MagicMock, patch
         from python_app.db import search_chunks
@@ -38,7 +46,7 @@ class IndexDocumentTests(unittest.TestCase):
             connect.return_value.__enter__.return_value = connection
             search_chunks([0.1] * 384, top_k=2)
         sql = cursor.execute.call_args.args[0]
-        self.assertEqual(sql.count("::vector"), 2)
+        self.assertEqual(sql.count("::vector"), 3)
 
     def test_search_chunks_returns_ranked_source_records(self):
         from unittest.mock import MagicMock, patch
@@ -53,6 +61,26 @@ class IndexDocumentTests(unittest.TestCase):
             connect.return_value.__enter__.return_value = connection
             results = search_chunks([0.1] * 384, top_k=2)
         self.assertEqual(results, [{"id": 7, "content": "relevant text", "filename": "budget.txt", "similarity": 0.92}])
+
+    def test_search_chunks_filters_results_below_minimum_similarity(self):
+        from unittest.mock import MagicMock, patch
+        from python_app.db import search_chunks
+
+        rows = [
+            (1, "good match", "budget.pdf", 0.71),
+            (2, "weak match", "budget.pdf", 0.39),
+        ]
+        cursor = MagicMock()
+        cursor.fetchall.return_value = [row for row in rows if row[3] >= 0.6]
+        connection = MagicMock()
+        connection.cursor.return_value.__enter__.return_value = cursor
+        with patch("python_app.db.get_db_connection") as connect:
+            connect.return_value.__enter__.return_value = connection
+            search_chunks([0.1] * 384, min_similarity=0.6)
+        sql, params = cursor.execute.call_args.args
+        self.assertIn("WHERE 1 - (rc.embedding <=> %s::vector) >= %s", sql)
+        self.assertIn(0.6, params)
+        self.assertEqual([row[1] for row in cursor.fetchall.return_value], ["good match"])
 
     def test_reindex_replaces_chunks_for_same_filename(self):
         filename = "__test_reindex_document__.txt"

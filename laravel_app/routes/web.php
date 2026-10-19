@@ -15,7 +15,7 @@ Route::post('/chat', function (Request $request) {
 
     try {
         $res = Http::timeout(60)->acceptJson()->post(
-            env('LLM_BASE_URL', 'http://127.0.0.1:8000') . '/chat',
+            rtrim(config('services.llm.base_url', 'http://127.0.0.1:8001'), '/') . '/chat',
             [
                 'question' => $data['message'],
                 'history' => $data['history'] ?? [],

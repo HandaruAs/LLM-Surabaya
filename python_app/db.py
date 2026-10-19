@@ -62,16 +62,19 @@ def count_chunks() -> int:
         return cur.fetchone()[0]
 
 
-def search_chunks(embedding: Any, top_k: int = 3) -> list[dict[str, Any]]:
+def search_chunks(
+    embedding: Any, top_k: int = 3, min_similarity: float = 0.60
+) -> list[dict[str, Any]]:
     with get_db_connection() as conn, conn.cursor() as cur:
         cur.execute(
             """SELECT rc.id, rc.content, rd.filename,
                       1 - (rc.embedding <=> %s::vector) AS similarity
                FROM rag_chunks AS rc
                JOIN rag_documents AS rd ON rd.id = rc.document_id
+               WHERE 1 - (rc.embedding <=> %s::vector) >= %s
                ORDER BY rc.embedding <=> %s::vector
                LIMIT %s""",
-            (embedding, embedding, top_k),
+            (embedding, embedding, min_similarity, embedding, top_k),
         )
         return [
             {"id": row[0], "content": row[1], "filename": row[2], "similarity": float(row[3])}

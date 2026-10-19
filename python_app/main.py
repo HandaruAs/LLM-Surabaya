@@ -38,10 +38,11 @@ EMBEDDING_DIMENSION = 384
 BASE_DIR = Path(__file__).parent
 DATA_DIR = BASE_DIR / "data"
 LLM_MODEL = "gemma4:e2b"
-CHUNK_SIZE = 1000
-CHUNK_OVERLAP = 200
+CHUNK_WORDS = 90
+CHUNK_OVERLAP_WORDS = 15
+EMBED_BATCH_SIZE = 16
 TOP_K = 3
-NUM_CTX = 1024
+NUM_CTX = 512
 THINK = False
 SHOW_CONTEXT = False
 
@@ -96,11 +97,12 @@ def read_file(path: Path) -> str:
 
 
 def chunk_text(text: str):
-    step = CHUNK_SIZE - CHUNK_OVERLAP
-    for i in range(0, len(text), step):
-        chunk = text[i : i + CHUNK_SIZE].strip()
-        if chunk:
-            yield chunk
+    words = text.split()
+    step = CHUNK_WORDS - CHUNK_OVERLAP_WORDS
+    for start in range(0, len(words), step):
+        chunk_words = words[start : start + CHUNK_WORDS]
+        if chunk_words:
+            yield " ".join(chunk_words)
 
 
 def index_documents():
@@ -115,7 +117,12 @@ def index_documents():
             print(f"- {file.name}: kosong atau teks tidak terbaca, dilewati")
             continue
 
-        chunks_with_embeddings = [(chunk, embed_text(chunk)) for chunk in chunks]
+        model = get_embedding_model()
+        chunks_with_embeddings = []
+        for start in range(0, len(chunks), EMBED_BATCH_SIZE):
+            batch = chunks[start : start + EMBED_BATCH_SIZE]
+            vectors = model.encode(batch, batch_size=EMBED_BATCH_SIZE).tolist()
+            chunks_with_embeddings.extend(zip(batch, vectors))
         saved_count = index_document(file.name, chunks_with_embeddings)
         print(f"- {file.name}: {saved_count} potongan disimpan")
 
@@ -123,10 +130,11 @@ def index_documents():
 
 
 # ---------- Tahap 2: tanya-jawab ----------
-def ask(question: str) -> str:
+def generate_answer(question: str, history: list[dict] | None = None) -> tuple[str, list[dict]]:
     records = search_chunks(embed_text(question), top_k=TOP_K)
     context = "\n\n---\n\n".join(record["content"] for record in records)
     sources = sorted({record["filename"] for record in records})
+    source_names = [{"filename": name} for name in sources]
 
     if SHOW_CONTEXT:
         print("\n[DEBUG] Potongan yang diambil:")
@@ -136,24 +144,33 @@ def ask(question: str) -> str:
                 f"sumber {record['filename']}) {record['content'][:150]}..."
             )
 
-    user_prompt = (
-        "Konteks dokumen Pemkot Surabaya (mungkin kosong):\n"
-        f"{context or '[Tidak ada konteks dokumen yang cocok.]'}"
-        f"\n\nPertanyaan: {question}"
-    )
+    messages = [{"role": "system", "content": SYSTEM_PROMPT}]
+    for item in (history or [])[-10:]:
+        if item.get("role") in {"user", "assistant"} and isinstance(item.get("content"), str):
+            messages.append({"role": item["role"], "content": item["content"][:2000]})
+    messages.append({
+        "role": "user",
+        "content": (
+            "Konteks dokumen Pemkot Surabaya (mungkin kosong):\n"
+            f"{context or '[Tidak ada konteks dokumen yang cocok.]'}"
+            f"\n\nPertanyaan: {question}"
+        ),
+    })
     response = ollama.chat(
         model=LLM_MODEL,
-        messages=[
-            {"role": "system", "content": SYSTEM_PROMPT},
-            {"role": "user", "content": user_prompt},
-        ],
+        messages=messages,
         options={"num_ctx": NUM_CTX},
         think=THINK,
         keep_alive=0,
     )
-    answer = response["message"]["content"]
-    if sources:
-        return f"{answer}\n\nSumber dokumen: {', '.join(sources)}"
+    return response["message"]["content"], source_names
+
+
+def ask(question: str) -> str:
+    answer, sources = generate_answer(question)
+    filenames = [source["filename"] for source in sources]
+    if filenames:
+        return f"{answer}\n\nSumber dokumen: {', '.join(filenames)}"
     return answer
 
 
