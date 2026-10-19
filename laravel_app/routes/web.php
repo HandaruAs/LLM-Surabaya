@@ -1,9 +1,8 @@
 <?php
 
-use Illuminate\Http\Request;
-use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Route;
 
+// Halaman chat. Semua data (kirim pesan, riwayat) lewat routes/api.php -> /api/...
 Route::view('/', 'chat')->name('chat');
 
 Route::post('/chat', function (Request $request) {
