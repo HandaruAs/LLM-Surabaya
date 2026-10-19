@@ -10,13 +10,14 @@ import sys
 from pathlib import Path
 
 import ollama
+from openpyxl import load_workbook
 from pypdf import PdfReader
 from sentence_transformers import SentenceTransformer
 
 try:
-    from .db import count_chunks, index_document, search_chunks
+    from .db import count_chunks, delete_admin_document, index_admin_document, index_document, search_chunks
 except ImportError:
-    from db import count_chunks, index_document, search_chunks
+    from db import count_chunks, delete_admin_document, index_admin_document, index_document, search_chunks
 
 
 EMBED_MODEL = "paraphrase-multilingual-MiniLM-L12-v2"
@@ -38,10 +39,11 @@ EMBEDDING_DIMENSION = 384
 BASE_DIR = Path(__file__).parent
 DATA_DIR = BASE_DIR / "data"
 LLM_MODEL = "gemma4:e2b"
-CHUNK_SIZE = 1000
-CHUNK_OVERLAP = 200
+CHUNK_WORDS = 90
+CHUNK_OVERLAP_WORDS = 15
+EMBED_BATCH_SIZE = 16
 TOP_K = 3
-NUM_CTX = 1024
+NUM_CTX = 512
 THINK = False
 SHOW_CONTEXT = False
 
@@ -89,18 +91,62 @@ if __name__ == "__main__":
 
 # ---------- Tahap 1: memproses dokumen ----------
 def read_file(path: Path) -> str:
-    if path.suffix.lower() == ".pdf":
+    suffix = path.suffix.lower()
+    if suffix == ".pdf":
         reader = PdfReader(str(path))
         return "\n".join(page.extract_text() or "" for page in reader.pages)
+    if suffix == ".xlsx":
+        workbook = load_workbook(path, read_only=True, data_only=True)
+        lines = []
+        for worksheet in workbook.worksheets:
+            lines.append(f"[Sheet: {worksheet.title}]")
+            for row in worksheet.iter_rows(values_only=True):
+                values = [str(value).strip() for value in row if value is not None and str(value).strip()]
+                if values:
+                    lines.append(" | ".join(values))
+        workbook.close()
+        return "\n".join(lines) if any(line.startswith("[Sheet:") for line in lines) and any(" | " in line for line in lines) else ""
     return path.read_text(encoding="utf-8")
 
 
+def delete_uploaded_document(document_id: int) -> bool:
+    return delete_admin_document(document_id)
+
+
+def index_uploaded_document(document_id: int, filename: str, content: bytes) -> dict[str, int]:
+    suffix = Path(filename).suffix.lower()
+    if suffix not in {".pdf", ".xlsx"}:
+        raise ValueError("Format dokumen tidak didukung.")
+
+    import tempfile
+
+    with tempfile.TemporaryDirectory() as temp_dir:
+        path = Path(temp_dir) / f"document{suffix}"
+        path.write_bytes(content)
+        text = read_file(path)
+
+    chunks = list(chunk_text(text))
+    if not chunks:
+        raise ValueError("Dokumen tidak berisi teks yang dapat diekstrak.")
+
+    model = get_embedding_model()
+    chunks_with_embeddings = []
+    for start in range(0, len(chunks), EMBED_BATCH_SIZE):
+        batch = chunks[start : start + EMBED_BATCH_SIZE]
+        vectors = model.encode(batch, batch_size=EMBED_BATCH_SIZE).tolist()
+        chunks_with_embeddings.extend(zip(batch, vectors))
+
+    saved_count = index_admin_document(document_id, filename, chunks_with_embeddings)
+    return {"chunks": saved_count}
+
+
 def chunk_text(text: str):
-    step = CHUNK_SIZE - CHUNK_OVERLAP
-    for i in range(0, len(text), step):
-        chunk = text[i : i + CHUNK_SIZE].strip()
-        if chunk:
-            yield chunk
+    words = text.split()
+    step = CHUNK_WORDS - CHUNK_OVERLAP_WORDS
+    for start in range(0, len(words), step):
+        chunk_words = words[start : start + CHUNK_WORDS]
+        if chunk_words:
+            yield " ".join(chunk_words)
 
 
 def index_documents():
@@ -115,7 +161,12 @@ def index_documents():
             print(f"- {file.name}: kosong atau teks tidak terbaca, dilewati")
             continue
 
-        chunks_with_embeddings = [(chunk, embed_text(chunk)) for chunk in chunks]
+        model = get_embedding_model()
+        chunks_with_embeddings = []
+        for start in range(0, len(chunks), EMBED_BATCH_SIZE):
+            batch = chunks[start : start + EMBED_BATCH_SIZE]
+            vectors = model.encode(batch, batch_size=EMBED_BATCH_SIZE).tolist()
+            chunks_with_embeddings.extend(zip(batch, vectors))
         saved_count = index_document(file.name, chunks_with_embeddings)
         print(f"- {file.name}: {saved_count} potongan disimpan")
 
@@ -123,10 +174,15 @@ def index_documents():
 
 
 # ---------- Tahap 2: tanya-jawab ----------
-def ask(question: str) -> str:
+def generate_answer(question: str, history: list[dict] | None = None) -> tuple[str, list[dict]]:
     records = search_chunks(embed_text(question), top_k=TOP_K)
     context = "\n\n---\n\n".join(record["content"] for record in records)
     sources = sorted({record["filename"] for record in records})
+    source_records = [
+        {key: record[key] for key in ("id", "filename", "content", "similarity")}
+        for record in records
+    ]
+    source_names = [{"filename": name} for name in sources]
 
     if SHOW_CONTEXT:
         print("\n[DEBUG] Potongan yang diambil:")
@@ -136,24 +192,33 @@ def ask(question: str) -> str:
                 f"sumber {record['filename']}) {record['content'][:150]}..."
             )
 
-    user_prompt = (
-        "Konteks dokumen Pemkot Surabaya (mungkin kosong):\n"
-        f"{context or '[Tidak ada konteks dokumen yang cocok.]'}"
-        f"\n\nPertanyaan: {question}"
-    )
+    messages = [{"role": "system", "content": SYSTEM_PROMPT}]
+    for item in (history or [])[-10:]:
+        if item.get("role") in {"user", "assistant"} and isinstance(item.get("content"), str):
+            messages.append({"role": item["role"], "content": item["content"][:2000]})
+    messages.append({
+        "role": "user",
+        "content": (
+            "Konteks dokumen Pemkot Surabaya (mungkin kosong):\n"
+            f"{context or '[Tidak ada konteks dokumen yang cocok.]'}"
+            f"\n\nPertanyaan: {question}"
+        ),
+    })
     response = ollama.chat(
         model=LLM_MODEL,
-        messages=[
-            {"role": "system", "content": SYSTEM_PROMPT},
-            {"role": "user", "content": user_prompt},
-        ],
+        messages=messages,
         options={"num_ctx": NUM_CTX},
         think=THINK,
         keep_alive=0,
     )
-    answer = response["message"]["content"]
-    if sources:
-        return f"{answer}\n\nSumber dokumen: {', '.join(sources)}"
+    return response["message"]["content"], source_records
+
+
+def ask(question: str) -> str:
+    answer, sources = generate_answer(question)
+    filenames = sorted({source["filename"] for source in sources})
+    if filenames:
+        return f"{answer}\n\nSumber dokumen: {', '.join(filenames)}"
     return answer
 
 

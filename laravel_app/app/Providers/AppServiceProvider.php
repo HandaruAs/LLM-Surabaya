@@ -27,6 +27,12 @@ class AppServiceProvider extends ServiceProvider
 
     public function boot(): void
     {
+        RateLimiter::for('admin-login', function (Request $request) {
+            $email = strtolower((string) $request->input('email'));
+
+            return Limit::perMinute(6)->by($email.'|'.$request->ip());
+        });
+
         // FR-16: batas per pengunjung DAN per IP untuk POST /api/chat.
         RateLimiter::for('chat', function (Request $request) {
             $visitor = strtolower((string) $request->header(EnsureVisitorId::HEADER));

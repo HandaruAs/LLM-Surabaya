@@ -1,7 +1,14 @@
 # RAG pipeline (python_app/main.py)
 ollama==0.6.3
 pypdf==6.19.0
+openpyxl==3.1.5
 sentence-transformers==6.1.0
+
+# Python environment file loading (python_app/db.py)
+python-dotenv==1.2.4
+fastapi==0.135.2
+python-multipart==0.0.20
+uvicorn==0.41.0
 
 # PostgreSQL + pgvector persistence (python_app/db.py)
 pgvector==0.5.1
