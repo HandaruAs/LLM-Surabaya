@@ -60,12 +60,13 @@
 
     <div class="px-4 pt-2 pb-4 md:px-8">
       <div class="mx-auto max-w-4xl">
+        <p id="formErr" role="alert" class="mb-2 hidden rounded-lg bg-red-50 px-3 py-2 text-sm text-red-800 dark:bg-red-950 dark:text-red-300"></p>
         <div class="flex items-end gap-2 rounded-2xl border border-line bg-card py-2 pr-2 pl-4 shadow-sm focus-within:border-brand">
           <textarea id="input" rows="1" placeholder="Tulis pertanyaan Anda tentang pajak, anggaran, atau retribusi" aria-label="Pertanyaan"
                     class="max-h-40 flex-1 resize-none bg-transparent py-1.5 leading-normal outline-none placeholder:text-mute"></textarea>
           <button id="btnSend" type="button" aria-label="Kirim" class="grid size-10 shrink-0 cursor-pointer place-items-center rounded-xl bg-brand text-paper hover:opacity-90 disabled:cursor-wait disabled:opacity-50"><i data-icon="send" class="block size-5"></i></button>
         </div>
-        <p class="mt-2 text-center text-xs text-mute">Informasi bersifat panduan umum. Untuk keputusan penting, pastikan ke instansi resmi.</p>
+        <p class="mt-2 text-center text-xs text-mute">Informasi bersifat panduan umum. Untuk keputusan penting, pastikan ke instansi resmi.<br>Jangan menuliskan data pribadi seperti NIK atau nomor rekening. Riwayat tersimpan untuk browser ini saja.</p>
       </div>
     </div>
   </section>
@@ -82,9 +83,48 @@
 </div>
 
 <script>
-const ASK_URL = @json(route('chat.ask'));
-const CSRF = document.querySelector('meta[name="csrf-token"]').content;
-const STORE = 'llm-surabaya-chats';
+/* ---------- Koneksi ke API backend (laravel_app/API.md) ---------- */
+const API = @json(url('/api'));
+const VISITOR_KEY = 'llm-surabaya-visitor';
+const FB_KEY = 'llm-surabaya-feedback';
+
+// Pengunjung anonim: UUID v4 dibuat sekali lalu disimpan di browser (PRD 7.3).
+function visitorId(){
+  let v = null;
+  try { v = localStorage.getItem(VISITOR_KEY); } catch(e){}
+  if(!v || !/^[0-9a-f-]{36}$/i.test(v)){
+    v = (crypto.randomUUID && crypto.randomUUID()) ||
+      'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, ch => {
+        const r = crypto.getRandomValues(new Uint8Array(1))[0] % 16;
+        return (ch === 'x' ? r : (r & 3) | 8).toString(16);
+      });
+    try { localStorage.setItem(VISITOR_KEY, v); } catch(e){}
+  }
+  return v;
+}
+const VISITOR = visitorId();
+
+// Panggil API. Selalu mengembalikan { ok, status, data } — status 0 berarti server tidak bisa dihubungi.
+async function api(path, method = 'GET', body){
+  try {
+    const res = await fetch(API + path, {
+      method,
+      headers: { 'Accept': 'application/json', 'Content-Type': 'application/json', 'X-Visitor-Id': VISITOR },
+      body: body === undefined ? undefined : JSON.stringify(body)
+    });
+    const data = res.status === 204 ? {} : await res.json().catch(() => ({}));
+    return { ok: res.ok, status: res.status, data };
+  } catch(e){
+    return { ok: false, status: 0, data: {} };
+  }
+}
+
+const MSG = {
+  offline: 'Tidak bisa terhubung ke server. Periksa koneksi lalu coba lagi.',
+  aiDown: 'Layanan AI sedang tidak tersedia. Pertanyaan Anda sudah tersimpan, silakan kirim ulang.',
+  unanswered: 'Pertanyaan ini belum terjawab.',
+  generic: 'Terjadi kesalahan. Silakan coba lagi.'
+};
 
 const CONTACT = {
   phones: [['(031) 5321444', '+62315321444'], ['(031) 99277339', '+623199277339']],
@@ -134,9 +174,13 @@ const FAQ = [
 
 const $ = id => document.getElementById(id);
 const col = $('col'), stream = $('stream'), input = $('input'), hist = $('hist');
-let chats = [];
-let activeId = null;
+let sessions = [];     // [{ id, title, updated_at }] dari GET /api/sessions
+let activeId = null;   // id sesi (angka) atau null untuk obrolan baru yang belum dikirim
+const msgs = {};       // id sesi -> [{ id, role, content, sources, t }]
+let draft = [];        // pesan obrolan baru sebelum server membuat sesinya
+const errors = {};     // id sesi -> pesan error untuk pertanyaan terakhir yang belum terjawab
 let busy = false;
+let loading = false;
 
 function el(tag, cls, text){
   const n = document.createElement(tag);
@@ -146,13 +190,21 @@ function el(tag, cls, text){
 }
 function svg(n){ return '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" class="size-full">' + (P[n] || '') + '</svg>'; }
 function ic(n, cls){ const s = el('span', cls || 'block size-4 shrink-0'); s.innerHTML = svg(n); return s; }
-function load(){ try { chats = JSON.parse(localStorage.getItem(STORE)) || []; } catch(e){ chats = []; } }
-function save(){ try { localStorage.setItem(STORE, JSON.stringify(chats)); } catch(e){} }
-function uid(){ return Date.now().toString(36) + Math.random().toString(36).slice(2,7); }
-function active(){ return chats.find(c => c.id === activeId); }
+function active(){ return sessions.find(s => s.id === activeId); }
+function current(){ return activeId === null ? draft : (msgs[activeId] || []); }
+function fromApi(m){ return { id: m.id, role: m.role, content: m.content, sources: m.sources || [], t: Date.parse(m.created_at) || Date.now() }; }
+
+// Suka / tidak suka hanya disimpan di browser, per id pesan.
+function fbAll(){ try { return JSON.parse(localStorage.getItem(FB_KEY)) || {}; } catch(e){ return {}; } }
+function fbGet(id){ return fbAll()[id] || ''; }
+function fbSet(id, v){ const all = fbAll(); if(v) all[id] = v; else delete all[id]; try { localStorage.setItem(FB_KEY, JSON.stringify(all)); } catch(e){} }
+
+function showFormErr(text){ const p = $('formErr'); p.textContent = text || ''; p.classList.toggle('hidden', !text); }
+function setBusy(v){ busy = v; $('btnSend').disabled = v; }
+
 function hm(ts){ return new Date(ts).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }); }
-function dayLabel(id){
-  const ts = parseInt(id.slice(0, 8), 36);
+function dayLabel(iso){
+  const ts = Date.parse(iso);
   if(!ts) return '';
   const d = new Date(ts), now = new Date();
   const diff = Math.round((new Date(now.getFullYear(), now.getMonth(), now.getDate()) - new Date(d.getFullYear(), d.getMonth(), d.getDate())) / 86400000);
@@ -186,37 +238,64 @@ function renderContact(){
   box.append(ul);
 }
 
-function newChat(){ activeId = null; render(); closeMenu(); input.focus(); }
-function ensureChat(){
-  let c = active();
-  if(!c){
-    c = { id: uid(), title: 'Obrolan baru', messages: [] };
-    chats.unshift(c);
-    activeId = c.id;
+async function refreshSessions(){
+  const r = await api('/sessions');
+  if(r.ok) sessions = r.data.data || [];
+  renderHist();
+  return r.ok;
+}
+
+// Sesi baru dari server: pindahkan draf ke sesi itu dan taruh di paling atas riwayat.
+function adopt(id, title){
+  if(activeId === null){ msgs[id] = draft; draft = []; activeId = id; }
+  sessions = [{ id, title: title || 'Obrolan baru', updated_at: new Date().toISOString() }, ...sessions.filter(s => s.id !== id)];
+}
+
+function newChat(){ if(busy) return; activeId = null; draft = []; showFormErr(''); render(); closeMenu(); input.focus(); }
+
+async function openChat(id){
+  if(busy) return;
+  activeId = id; showFormErr(''); closeMenu();
+  if(!msgs[id]){
+    loading = true; render();
+    const r = await api('/sessions/' + id + '/messages');
+    loading = false;
+    if(r.status === 404){ await refreshSessions(); activeId = null; render(); return; }
+    if(!r.ok){ showFormErr(r.status === 0 ? MSG.offline : MSG.generic); render(); return; }
+    msgs[id] = (r.data.data || []).map(fromApi);
   }
-  return c;
+  render();
 }
-function openChat(id){ activeId = id; render(); closeMenu(); }
-function delChat(id){
-  if(!confirm('Hapus percakapan ini?')) return;
-  chats = chats.filter(c => c.id !== id);
+
+async function delChat(id){
+  if(busy || !confirm('Hapus percakapan ini?')) return;
+  const r = await api('/sessions/' + id, 'DELETE');
+  if(!r.ok && r.status !== 404){ alert(r.status === 0 ? MSG.offline : MSG.generic); return; }
+  sessions = sessions.filter(s => s.id !== id);
+  delete msgs[id]; delete errors[id];
   if(activeId === id) activeId = null;
-  save(); render();
+  render();
 }
-function clearAll(){
-  if(!chats.length || !confirm('Hapus semua riwayat?')) return;
-  chats = []; activeId = null; save(); render();
+
+async function clearAll(){
+  if(busy || !sessions.length || !confirm('Hapus semua riwayat?')) return;
+  const r = await api('/sessions', 'DELETE');
+  if(!r.ok){ alert(r.status === 0 ? MSG.offline : MSG.generic); return; }
+  sessions = []; activeId = null; draft = [];
+  Object.keys(msgs).forEach(k => delete msgs[k]);
+  Object.keys(errors).forEach(k => delete errors[k]);
+  render();
 }
 
 function renderHist(){
   hist.innerHTML = '';
-  if(!chats.length){ hist.append(el('div', 'px-2 py-3 text-sm text-mute', 'Belum ada riwayat.')); return; }
-  chats.forEach(c => {
+  if(!sessions.length){ hist.append(el('div', 'px-2 py-3 text-sm text-mute', 'Belum ada riwayat.')); return; }
+  sessions.forEach(c => {
     const on = c.id === activeId;
     const row = el('div', 'group flex items-center rounded-lg border-l-[3px] ' + (on ? 'border-brand bg-tint' : 'border-transparent hover:bg-tint'));
     const open = el('button', 'min-w-0 flex-1 cursor-pointer bg-transparent px-2.5 py-2 text-left');
     open.type = 'button';
-    open.append(el('div', 'truncate text-sm font-medium', c.title), el('div', 'text-xs text-mute', dayLabel(c.id)));
+    open.append(el('div', 'truncate text-sm font-medium', c.title), el('div', 'text-xs text-mute', dayLabel(c.updated_at)));
     open.onclick = () => openChat(c.id);
     const del = el('button', 'mr-1 cursor-pointer rounded-md p-1.5 text-mute hover:text-red-500 focus-visible:opacity-100 md:opacity-0 md:group-hover:opacity-100');
     del.type = 'button';
@@ -257,12 +336,23 @@ function renderEntry(q, a, last){
 
   const body = el('div', 'min-w-0 pl-4');
   if(!a){
-    if(busy){
+    if(busy && last){
       const p = el('div', 'flex flex-col gap-2 text-sm text-mute');
       const bar = el('div', 'h-0.5 w-44 overflow-hidden rounded bg-line');
       bar.append(el('div', 'sweep h-full w-1/3 bg-brand'));
       p.append(el('span', '', 'Menyusun jawaban…'), bar);
       body.append(p);
+    } else if(last && activeId !== null){
+      // Tersimpan di server tapi belum dijawab: tawarkan kirim ulang (POST /api/sessions/{id}/retry).
+      const box = el('div', 'flex flex-wrap items-center gap-3 rounded-lg bg-red-50 px-3 py-2 text-red-800 dark:bg-red-950 dark:text-red-300');
+      box.append(el('span', 'text-sm', errors[activeId] || MSG.unanswered));
+      const again = el('button', 'cursor-pointer rounded-md border border-current px-2.5 py-1 text-sm font-medium hover:opacity-80', 'Kirim ulang');
+      again.type = 'button';
+      again.onclick = retry;
+      box.append(again);
+      body.append(box);
+    } else {
+      body.append(el('div', 'text-sm text-mute', 'Tidak terjawab.'));
     }
     e.append(body);
     return e;
@@ -274,15 +364,17 @@ function renderEntry(q, a, last){
     acts.append(iconBtn('copy', 'Salin jawaban', false, b => {
       navigator.clipboard.writeText(a.content).then(() => { b.title = 'Tersalin'; b.classList.add('text-brand'); setTimeout(() => { b.title = 'Salin jawaban'; b.classList.remove('text-brand'); }, 1500); }).catch(() => {});
     }));
-    acts.append(iconBtn('up', 'Membantu', a.fb === 'up', () => { a.fb = a.fb === 'up' ? '' : 'up'; save(); render(); }));
-    acts.append(iconBtn('down', 'Kurang membantu', a.fb === 'down', () => { a.fb = a.fb === 'down' ? '' : 'down'; save(); render(); }));
+    const fb = fbGet(a.id);
+    acts.append(iconBtn('up', 'Membantu', fb === 'up', () => { fbSet(a.id, fb === 'up' ? '' : 'up'); render(); }));
+    acts.append(iconBtn('down', 'Kurang membantu', fb === 'down', () => { fbSet(a.id, fb === 'down' ? '' : 'down'); render(); }));
     body.append(acts);
   }
 
-  if(last && !a.error && !busy && a.followups && a.followups.length){
+  const followups = a.followups && a.followups.length ? a.followups : FOLLOW;
+  if(last && !a.error && !busy){
     const f = el('div', 'mt-4 border-t border-line pt-3');
     f.append(el('div', 'mb-1 text-sm text-mute', 'Lanjutkan dengan'));
-    a.followups.forEach(txt => {
+    followups.forEach(txt => {
       const b = el('button', 'flex w-full cursor-pointer items-center gap-2 py-1.5 text-left text-brand hover:underline');
       b.type = 'button';
       b.append(ic('follow'), el('span', '', txt));
@@ -335,52 +427,88 @@ function renderWelcome(){
 function render(){
   renderHist();
   const c = active();
-  $('title').textContent = c ? c.title : 'Obrolan baru';
+  const ms = current();
+  $('title').textContent = c ? c.title : (ms.length ? ms[0].content.slice(0, 40) : 'Obrolan baru');
   col.innerHTML = '';
-  if(!c || !c.messages.length){ col.append(renderWelcome()); }
+  if(loading){ col.append(el('div', 'text-sm text-mute', 'Memuat percakapan…')); }
+  else if(!ms.length){ col.append(renderWelcome()); }
   else {
-    const ms = c.messages;
     ms.forEach((m, i) => {
       if(m.role !== 'user') return;
       const a = ms[i + 1] && ms[i + 1].role === 'assistant' ? ms[i + 1] : null;
-      col.append(renderEntry(m, a, i >= ms.length - 2));
+      // "last" = entri ini adalah pesan paling akhir di sesi (hanya itu yang bisa dikirim ulang).
+      col.append(renderEntry(m, a, (a ? i + 1 : i) === ms.length - 1));
     });
   }
   scrollDown();
 }
 function scrollDown(){ stream.scrollTop = stream.scrollHeight; }
 
+// Kirim pertanyaan: POST /api/chat. Server menyimpan pertanyaan, bertanya ke AI, lalu menyimpan jawabannya.
 async function send(raw){
   const text = (raw || '').trim();
   if(!text || busy) return;
-  const c = ensureChat();
-  const history = c.messages.filter(m => !m.error).slice(-10).map(m => ({ role: m.role, content: m.content }));
-  c.messages.push({ role: 'user', content: text, t: Date.now() });
-  if(c.messages.length === 1) c.title = text.length > 42 ? text.slice(0, 42) + '…' : text;
-  save();
+  showFormErr('');
+  const list = current();
+  list.push({ role: 'user', content: text, t: Date.now() });
   input.value = '';
   autosize();
-  busy = true;
-  $('btnSend').disabled = true;
+  setBusy(true);
   render();
-  try {
-    const res = await fetch(ASK_URL, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'Accept': 'application/json', 'X-CSRF-TOKEN': CSRF },
-      body: JSON.stringify({ message: text, history: history })
-    });
-    const data = await res.json().catch(() => ({}));
-    if(!res.ok) throw new Error(data.error || data.message || 'Terjadi kesalahan. Coba kirim ulang.');
-    const sug = Array.isArray(data.suggestions) ? data.suggestions.filter(x => typeof x === 'string').slice(0, 3) : [];
-    c.messages.push({ role: 'assistant', content: data.answer || '…', sources: data.sources || [], followups: sug.length ? sug : FOLLOW, t: Date.now() });
-  } catch(e){
-    c.messages.push({ role: 'assistant', content: e.message, error: true, t: Date.now() });
+
+  const r = await api('/chat', 'POST', { session_id: activeId, message: text });
+
+  if(r.data && r.data.session_id) adopt(r.data.session_id, r.data.title);
+
+  if(r.ok){
+    list.push(fromApi(r.data.message));
+    delete errors[activeId];
+  } else if(r.status === 503 && r.data.session_id){
+    // Pertanyaan sudah tersimpan, AI belum menjawab -> tombol "Kirim ulang".
+    errors[activeId] = MSG.aiDown;
+  } else {
+    // 422 / 429 / 404 / server tidak terjangkau: pertanyaan TIDAK tersimpan,
+    // jadi hapus dari layar dan kembalikan teksnya ke kolom input.
+    list.pop();
+    input.value = text;
+    autosize();
+    const fieldErr = r.data.errors && Object.values(r.data.errors)[0];
+    showFormErr(r.status === 0 ? MSG.offline : (fieldErr && fieldErr[0]) || r.data.message || MSG.generic);
+    if(r.status === 404){ activeId = null; draft = []; await refreshSessions(); }
   }
-  save();
-  busy = false;
-  $('btnSend').disabled = false;
+
+  setBusy(false);
   render();
   input.focus();
+}
+
+// Kirim ulang pertanyaan terakhir yang belum terjawab: POST /api/sessions/{id}/retry.
+async function retry(){
+  if(busy || activeId === null) return;
+  const id = activeId;
+  showFormErr('');
+  setBusy(true);
+  render();
+
+  const r = await api('/sessions/' + id + '/retry', 'POST');
+
+  if(r.ok){
+    (msgs[id] || []).push(fromApi(r.data.message));
+    delete errors[id];
+    sessions = [...sessions.filter(s => s.id === id), ...sessions.filter(s => s.id !== id)];
+  } else if(r.status === 422 || r.status === 409){
+    // Sudah terjawab / sedang diproses di tab lain: muat ulang pesan dari server.
+    delete msgs[id]; delete errors[id];
+    setBusy(false);
+    return openChat(id);
+  } else if(r.status === 404){
+    delete msgs[id]; activeId = null; await refreshSessions();
+  } else {
+    errors[id] = r.status === 0 ? MSG.offline : r.status === 503 ? MSG.aiDown : (r.data.message || MSG.generic);
+  }
+
+  setBusy(false);
+  render();
 }
 
 function autosize(){
@@ -453,10 +581,12 @@ rz.addEventListener('pointerdown', e => {
 });
 rz.addEventListener('dblclick', () => { curW = setSide(SIDE_DEF); saveSide(); });
 
-load();
-if(chats.length) activeId = chats[0].id;
 renderContact();
 render();
+(async () => {
+  if(!(await refreshSessions())) showFormErr(MSG.offline);
+  if(sessions.length) await openChat(sessions[0].id);
+})();
 </script>
 </body>
 </html>
