@@ -8,6 +8,7 @@ venv/
 
 # Local vector database (rebuild with: python main.py index)
 chroma_db/
+python_app/chroma_db/
 
 # Local environment variables and secrets
 .env

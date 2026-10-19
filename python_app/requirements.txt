@@ -1,0 +1,9 @@
+# RAG pipeline (python_app/main.py)
+chromadb==1.5.9
+ollama==0.6.3
+pypdf==6.19.0
+sentence-transformers==6.1.0
+
+# PostgreSQL + pgvector persistence (python_app/db.py)
+pgvector==0.5.1
+psycopg[binary]==3.3.6
