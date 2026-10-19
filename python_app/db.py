@@ -1,10 +1,23 @@
 """PostgreSQL persistence and retrieval for the RAG application."""
 
 import os
+from pathlib import Path
 from typing import Any
 
 import psycopg
+from dotenv import load_dotenv
 from pgvector.psycopg import register_vector
+
+
+ENV_FILE = Path(__file__).with_name(".env")
+
+
+def load_app_env(env_file: Path = ENV_FILE) -> bool:
+    """Load the Python application's local environment without overriding the shell."""
+    return load_dotenv(env_file, override=False)
+
+
+load_app_env()
 
 
 def get_db_connection():
@@ -53,10 +66,10 @@ def search_chunks(embedding: Any, top_k: int = 3) -> list[dict[str, Any]]:
     with get_db_connection() as conn, conn.cursor() as cur:
         cur.execute(
             """SELECT rc.id, rc.content, rd.filename,
-                      1 - (rc.embedding <=> %s) AS similarity
+                      1 - (rc.embedding <=> %s::vector) AS similarity
                FROM rag_chunks AS rc
                JOIN rag_documents AS rd ON rd.id = rc.document_id
-               ORDER BY rc.embedding <=> %s
+               ORDER BY rc.embedding <=> %s::vector
                LIMIT %s""",
             (embedding, embedding, top_k),
         )

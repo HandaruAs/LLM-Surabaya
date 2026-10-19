@@ -1,6 +1,24 @@
+import os
 import sys
+import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import patch
+
+from python_app.db import load_app_env
+
+
+class EnvConfigurationTests(unittest.TestCase):
+    def test_loads_python_app_env_without_overwriting_existing_environment(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            env_file = Path(temp_dir) / ".env"
+            env_file.write_text("PGHOST=from-file\nPGPORT=5432\n", encoding="utf-8")
+            with patch.dict(os.environ, {"PGHOST": "existing"}, clear=True):
+                loaded = load_app_env(env_file)
+                self.assertTrue(loaded)
+                self.assertEqual(os.environ["PGHOST"], "existing")
+                self.assertEqual(os.environ["PGPORT"], "5432")
+
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
@@ -8,6 +26,34 @@ from python_app.db import index_document
 
 
 class IndexDocumentTests(unittest.TestCase):
+    def test_search_chunks_casts_embedding_parameters_to_vector(self):
+        from unittest.mock import MagicMock, patch
+        from python_app.db import search_chunks
+
+        cursor = MagicMock()
+        cursor.fetchall.return_value = []
+        connection = MagicMock()
+        connection.cursor.return_value.__enter__.return_value = cursor
+        with patch("python_app.db.get_db_connection") as connect:
+            connect.return_value.__enter__.return_value = connection
+            search_chunks([0.1] * 384, top_k=2)
+        sql = cursor.execute.call_args.args[0]
+        self.assertEqual(sql.count("::vector"), 2)
+
+    def test_search_chunks_returns_ranked_source_records(self):
+        from unittest.mock import MagicMock, patch
+        from python_app.db import search_chunks
+
+        rows = [(7, "relevant text", "budget.txt", 0.92)]
+        cursor = MagicMock()
+        cursor.fetchall.return_value = rows
+        connection = MagicMock()
+        connection.cursor.return_value.__enter__.return_value = cursor
+        with patch("python_app.db.get_db_connection") as connect:
+            connect.return_value.__enter__.return_value = connection
+            results = search_chunks([0.1] * 384, top_k=2)
+        self.assertEqual(results, [{"id": 7, "content": "relevant text", "filename": "budget.txt", "similarity": 0.92}])
+
     def test_reindex_replaces_chunks_for_same_filename(self):
         filename = "__test_reindex_document__.txt"
         first_chunks = [("old chunk", [0.0] * 384)]
@@ -16,7 +62,7 @@ class IndexDocumentTests(unittest.TestCase):
         index_document(filename, first_chunks)
         index_document(filename, second_chunks)
 
-        from db import get_db_connection
+        from python_app.db import get_db_connection
 
         conn = get_db_connection()
         try:

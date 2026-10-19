@@ -1,44 +1,68 @@
 """
-Chatbot keuangan sederhana (RAG): dokumen -> Chroma -> Llama via Ollama.
+Chatbot keuangan sederhana (RAG): dokumen -> PostgreSQL/pgvector -> Ollama.
 
 Cara pakai:
-    python main.py index   # baca dokumen di folder data/ lalu simpan ke Chroma
+    python main.py index   # baca dokumen di folder data/ lalu simpan ke PostgreSQL
     python main.py         # mulai tanya-jawab
 """
 
 import sys
 from pathlib import Path
 
-import chromadb
 import ollama
-from chromadb.utils import embedding_functions
 from pypdf import PdfReader
+from sentence_transformers import SentenceTransformer
 
-# ---------- Pengaturan ----------
-BASE_DIR = Path(__file__).parent          # folder tempat main.py berada
-DATA_DIR = BASE_DIR / "data"              # dokumen sumber (.txt, .md, .pdf)
-DB_DIR = BASE_DIR / "chroma_db"           # database vektor (dibuat otomatis)
+try:
+    from .db import count_chunks, index_document, search_chunks
+except ImportError:
+    from db import count_chunks, index_document, search_chunks
 
-EMBED_MODEL = "paraphrase-multilingual-MiniLM-L12-v2"  # mendukung bahasa Indonesia
-LLM_MODEL = "gemma4:e2b"                   # laptop RAM 8GB: "gemma4:e2b" | RAM 24GB+: "gemma4:26b"
-CHUNK_SIZE = 1000                         # panjang tiap potongan (karakter)
-CHUNK_OVERLAP = 200                       # tumpang tindih antar potongan
-TOP_K = 3                                 # jumlah potongan yang diambil per pertanyaan
 
-NUM_CTX = 4096                            # context window; kecil = hemat RAM, cukup untuk TOP_K=3
-THINK = False                             # False = tanpa mode "thinking", jawaban lebih cepat
-SHOW_CONTEXT = False                      # True = tampilkan potongan yang diambil (untuk debugging)
+EMBED_MODEL = "paraphrase-multilingual-MiniLM-L12-v2"
+_embedding_model = None
+
+
+def get_embedding_model():
+    global _embedding_model
+    if _embedding_model is None:
+        _embedding_model = SentenceTransformer(EMBED_MODEL)
+    return _embedding_model
+
+
+def embed_text(text: str) -> list[float]:
+    return get_embedding_model().encode(text).tolist()
+
+
+EMBEDDING_DIMENSION = 384
+BASE_DIR = Path(__file__).parent
+DATA_DIR = BASE_DIR / "data"
+LLM_MODEL = "gemma4:e2b"
+CHUNK_SIZE = 1000
+CHUNK_OVERLAP = 200
+TOP_K = 3
+NUM_CTX = 1024
+THINK = False
+SHOW_CONTEXT = False
 
 SYSTEM_PROMPT = """Kamu adalah asisten edukasi keuangan untuk masyarakat Surabaya.
 Aturan:
-- Jawab HANYA berdasarkan konteks yang diberikan.
-- Kalau jawabannya tidak ada di konteks, katakan bahwa informasinya belum tersedia.
+- Jawab dalam bahasa Indonesia yang sederhana dan jelas.
+- Untuk pertanyaan umum tentang keuangan, kamu boleh memakai pengetahuan umum model.
+- Jika pertanyaan meminta informasi dari dokumen Pemkot Surabaya, gunakan hanya konteks dokumen yang diberikan.
+- Jika informasi yang diminta tentang dokumen tidak ada di konteks, katakan bahwa informasi tersebut belum tersedia.
 - Jangan merekomendasikan produk investasi atau perusahaan tertentu.
-- Gunakan bahasa Indonesia yang sederhana dan jelas.
 - Akhiri dengan pengingat singkat bahwa ini bukan nasihat keuangan profesional."""
 
-# ---------- Muat model LLM lebih dulu ----------
-# Gemma dimuat SEBELUM model embedding (PyTorch) supaya keduanya tidak berebut RAM.
+
+def validate_embedding_model():
+    dimension = get_embedding_model().get_sentence_embedding_dimension()
+    if dimension != EMBEDDING_DIMENSION:
+        raise RuntimeError(
+            f"Model embedding menghasilkan {dimension} dimensi, database mengharapkan {EMBEDDING_DIMENSION}"
+        )
+
+
 def warm_up_llm():
     print(f"Memuat model {LLM_MODEL} ke memori, tunggu sebentar...")
     try:
@@ -49,20 +73,18 @@ def warm_up_llm():
             think=THINK,
             keep_alive=0,
         )
-    except Exception as e:
-        print(f"[Error] Gagal memuat model: {e}")
+    except Exception as exc:
+        print(f"[Error] Gagal memuat model: {exc}")
         sys.exit(1)
 
 
-if len(sys.argv) == 1:  # hanya saat mode tanya-jawab, bukan saat 'index'
+# Load LLM sebelum embedding untuk mengurangi perebutan RAM.
+if __name__ == "__main__" and len(sys.argv) == 1:
     warm_up_llm()
 
-# ---------- Database vektor ----------
-embed_fn = embedding_functions.SentenceTransformerEmbeddingFunction(model_name=EMBED_MODEL)
-client = chromadb.PersistentClient(path=str(DB_DIR))
-collection = client.get_or_create_collection(
-    name="dokumen_keuangan", embedding_function=embed_fn
-)
+if __name__ == "__main__":
+    validate_embedding_model()
+
 
 
 # ---------- Tahap 1: memproses dokumen ----------
@@ -93,31 +115,32 @@ def index_documents():
             print(f"- {file.name}: kosong atau teks tidak terbaca, dilewati")
             continue
 
-        collection.delete(where={"sumber": file.name})  # hapus versi lama dokumen ini
-        collection.upsert(
-            ids=[f"{file.name}-{i}" for i in range(len(chunks))],
-            documents=chunks,
-            metadatas=[{"sumber": file.name} for _ in chunks],
-        )
-        print(f"- {file.name}: {len(chunks)} potongan disimpan")
+        chunks_with_embeddings = [(chunk, embed_text(chunk)) for chunk in chunks]
+        saved_count = index_document(file.name, chunks_with_embeddings)
+        print(f"- {file.name}: {saved_count} potongan disimpan")
 
-    print(f"Selesai. Total potongan di database: {collection.count()}")
+    print(f"Selesai. Total potongan di database: {count_chunks()}")
 
 
 # ---------- Tahap 2: tanya-jawab ----------
 def ask(question: str) -> str:
-    results = collection.query(query_texts=[question], n_results=TOP_K)
-    docs = results["documents"][0]
-    sources = sorted({m["sumber"] for m in results["metadatas"][0]})
+    records = search_chunks(embed_text(question), top_k=TOP_K)
+    context = "\n\n---\n\n".join(record["content"] for record in records)
+    sources = sorted({record["filename"] for record in records})
 
     if SHOW_CONTEXT:
         print("\n[DEBUG] Potongan yang diambil:")
-        for i, (doc, dist) in enumerate(zip(docs, results["distances"][0]), start=1):
-            print(f"  {i}. (jarak {dist:.3f}) {doc[:150]}...")
+        for i, record in enumerate(records, start=1):
+            print(
+                f"  {i}. (kemiripan {record['similarity']:.3f}; "
+                f"sumber {record['filename']}) {record['content'][:150]}..."
+            )
 
-    context = "\n\n---\n\n".join(docs)
-    user_prompt = f"Konteks:\n{context}\n\nPertanyaan: {question}"
-
+    user_prompt = (
+        "Konteks dokumen Pemkot Surabaya (mungkin kosong):\n"
+        f"{context or '[Tidak ada konteks dokumen yang cocok.]'}"
+        f"\n\nPertanyaan: {question}"
+    )
     response = ollama.chat(
         model=LLM_MODEL,
         messages=[
@@ -129,13 +152,14 @@ def ask(question: str) -> str:
         keep_alive=0,
     )
     answer = response["message"]["content"]
-    return f"{answer}\n\nSumber: {', '.join(sources)}"
+    if sources:
+        return f"{answer}\n\nSumber dokumen: {', '.join(sources)}"
+    return answer
 
 
 def chat_loop():
-    if collection.count() == 0:
-        print("Database masih kosong. Jalankan dulu: python main.py index")
-        return
+    if count_chunks() == 0:
+        print("Database dokumen kosong; pertanyaan umum tetap bisa dijawab.\n")
 
     print("Chatbot keuangan siap. Ketik 'keluar' untuk berhenti.\n")
     while True:
