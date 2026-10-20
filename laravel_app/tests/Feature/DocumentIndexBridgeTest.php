@@ -24,7 +24,7 @@ class DocumentIndexBridgeTest extends TestCase
         Http::fake(['rag.test/documents/index' => Http::response(['status' => 'indexed', 'chunks' => 2])]);
         config(['services.rag.url' => 'https://rag.test']);
 
-        $this->actingAs(User::factory()->create())
+        $this->actingAs(User::factory()->admin()->create())
             ->post('/admin/documents', [
                 'document' => UploadedFile::fake()->create('laporan.pdf', 10, 'application/pdf'),
             ])
@@ -43,7 +43,7 @@ class DocumentIndexBridgeTest extends TestCase
         Http::fake(['rag.test/documents/index' => Http::response([], 503)]);
         config(['services.rag.url' => 'https://rag.test']);
 
-        $this->actingAs(User::factory()->create())
+        $this->actingAs(User::factory()->admin()->create())
             ->post('/admin/documents', [
                 'document' => UploadedFile::fake()->create('laporan.pdf', 10, 'application/pdf'),
             ])

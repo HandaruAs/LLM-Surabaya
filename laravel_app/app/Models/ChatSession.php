@@ -4,6 +4,7 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 
 class ChatSession extends Model
@@ -14,19 +15,24 @@ class ChatSession extends Model
     /** Kolom waktu bertipe timestamptz: tulis beserta offset agar tidak bergeser zona. */
     protected $dateFormat = 'Y-m-d H:i:sP';
 
-    protected $fillable = ['visitor_id', 'title'];
+    protected $fillable = ['user_id', 'title'];
 
-    protected $hidden = ['visitor_id'];
+    protected $hidden = ['visitor_id', 'user_id'];
+
+    public function user(): BelongsTo
+    {
+        return $this->belongsTo(User::class);
+    }
 
     public function messages(): HasMany
     {
         return $this->hasMany(ChatMessage::class, 'session_id');
     }
 
-    /** Hanya sesi milik pengunjung tertentu. */
-    public function scopeOwnedBy(Builder $query, string $visitorId): Builder
+    /** Hanya sesi milik user tertentu. */
+    public function scopeOwnedBy(Builder $query, User $user): Builder
     {
-        return $query->where('visitor_id', $visitorId);
+        return $query->where('user_id', $user->id);
     }
 
     public static function titleFrom(string $question): string

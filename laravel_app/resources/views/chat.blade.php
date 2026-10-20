@@ -26,6 +26,7 @@
       <i data-icon="newchat" class="block size-5"></i>Obrolan baru
     </button>
 
+    @auth
     <div class="flex min-h-[7rem] flex-1 flex-col gap-1">
       <div class="flex items-center justify-between px-1 text-xs text-mute">
         <span>Riwayat</span>
@@ -33,6 +34,24 @@
       </div>
       <nav id="hist" class="flex min-h-0 flex-1 flex-col gap-0.5 overflow-y-auto"></nav>
     </div>
+    @else
+    {{-- Tamu: tidak ada riwayat tersimpan. --}}
+    <div class="flex flex-1 flex-col">
+      @if (auth('web')->user()?->isAdmin())
+      <a href="{{ route('admin.dashboard') }}" class="mb-3 flex items-center justify-between rounded-xl border border-brand px-3.5 py-2.5 text-sm font-medium text-brand hover:bg-tint">
+        Kembali ke area admin <span aria-hidden="true">→</span>
+      </a>
+      @endif
+      <div class="rounded-xl border border-line p-3.5">
+        <div class="text-sm font-medium">Riwayat tidak disimpan</div>
+        <p class="mt-1 text-sm text-mute">Kamu belum masuk. Percakapan ini akan hilang saat halaman ditutup atau dimuat ulang.</p>
+        <div class="mt-3 flex gap-2">
+          <a href="{{ route('login') }}" class="flex-1 rounded-lg bg-brand px-3 py-2 text-center text-sm font-medium text-paper hover:opacity-90">Masuk</a>
+          <a href="{{ route('register') }}" class="flex-1 rounded-lg border border-line px-3 py-2 text-center text-sm font-medium hover:bg-tint">Daftar</a>
+        </div>
+      </div>
+    </div>
+    @endauth
 
     <div class="shrink-0 border-t border-line pt-3">
       <button id="btnFaq" type="button" class="flex w-full cursor-pointer items-center justify-between rounded-lg px-2.5 py-2 text-sm font-medium hover:bg-tint">
@@ -40,6 +59,18 @@
         <i data-icon="chevron" class="block size-4 text-mute"></i>
       </button>
       <div id="contact" class="mt-3 rounded-xl bg-tint p-3"></div>
+      @auth
+      <div class="mt-3 flex items-center justify-between gap-2 px-1">
+        <div class="min-w-0">
+          <div class="truncate text-sm font-medium">{{ auth()->user()->name }}</div>
+          <div class="truncate text-xs text-mute">{{ auth()->user()->email }}</div>
+        </div>
+        <form method="POST" action="{{ route('logout') }}">
+          @csrf
+          <button type="submit" class="cursor-pointer rounded-lg border border-line px-2.5 py-1.5 text-xs font-medium hover:bg-tint">Keluar</button>
+        </form>
+      </div>
+      @endauth
     </div>
   </aside>
   <div id="scrim" class="fixed inset-0 z-10 hidden bg-black/40 md:hidden"></div>
@@ -66,7 +97,7 @@
                     class="max-h-40 flex-1 resize-none bg-transparent py-1.5 leading-normal outline-none placeholder:text-mute"></textarea>
           <button id="btnSend" type="button" aria-label="Kirim" class="grid size-10 shrink-0 cursor-pointer place-items-center rounded-xl bg-brand text-paper hover:opacity-90 disabled:cursor-wait disabled:opacity-50"><i data-icon="send" class="block size-5"></i></button>
         </div>
-        <p class="mt-2 text-center text-xs text-mute">Informasi bersifat panduan umum. Untuk keputusan penting, pastikan ke instansi resmi.<br>Jangan menuliskan data pribadi seperti NIK atau nomor rekening. Riwayat tersimpan untuk browser ini saja.</p>
+        <p class="mt-2 text-center text-xs text-mute">Informasi bersifat panduan umum. Untuk keputusan penting, pastikan ke instansi resmi.<br>Jangan menuliskan data pribadi seperti NIK atau nomor rekening. @auth Riwayat tersimpan di akunmu. @else Riwayat tidak disimpan karena kamu belum masuk. @endauth</p>
       </div>
     </div>
   </section>
@@ -82,34 +113,23 @@
   </div>
 </div>
 
-<script>
+<script nonce="{{ Vite::cspNonce() }}">
 /* ---------- Koneksi ke API backend (laravel_app/API.md) ---------- */
 const API = @json(url('/api'));
-const VISITOR_KEY = 'llm-surabaya-visitor';
 const FB_KEY = 'llm-surabaya-feedback';
+const CSRF = document.querySelector('meta[name="csrf-token"]').content;
 
-// Pengunjung anonim: UUID v4 dibuat sekali lalu disimpan di browser (PRD 7.3).
-function visitorId(){
-  let v = null;
-  try { v = localStorage.getItem(VISITOR_KEY); } catch(e){}
-  if(!v || !/^[0-9a-f-]{36}$/i.test(v)){
-    v = (crypto.randomUUID && crypto.randomUUID()) ||
-      'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, ch => {
-        const r = crypto.getRandomValues(new Uint8Array(1))[0] % 16;
-        return (ch === 'x' ? r : (r & 3) | 8).toString(16);
-      });
-    try { localStorage.setItem(VISITOR_KEY, v); } catch(e){}
-  }
-  return v;
-}
-const VISITOR = visitorId();
+// Login memakai session (cookie). Tamu boleh bertanya, tapi riwayatnya tidak disimpan:
+// percakapan tamu hanya ada di memori halaman ini dan dikirim ulang sebagai "history".
+const LOGGED_IN = @json(auth()->check());
 
 // Panggil API. Selalu mengembalikan { ok, status, data } — status 0 berarti server tidak bisa dihubungi.
 async function api(path, method = 'GET', body){
   try {
     const res = await fetch(API + path, {
       method,
-      headers: { 'Accept': 'application/json', 'Content-Type': 'application/json', 'X-Visitor-Id': VISITOR },
+      headers: { 'Accept': 'application/json', 'Content-Type': 'application/json', 'X-CSRF-TOKEN': CSRF, 'X-Requested-With': 'XMLHttpRequest' },
+      credentials: 'same-origin',
       body: body === undefined ? undefined : JSON.stringify(body)
     });
     const data = res.status === 204 ? {} : await res.json().catch(() => ({}));
@@ -279,6 +299,7 @@ function renderContact(){
 }
 
 async function refreshSessions(){
+  if(!LOGGED_IN) return true; // tamu tidak punya riwayat tersimpan
   const r = await api('/sessions');
   if(r.ok){
     sessions = r.data.data || [];
@@ -341,6 +362,7 @@ async function clearAll(){
 }
 
 function renderHist(){
+  if(!hist) return; // tamu: panel riwayat tidak ada
   hist.innerHTML = '';
   if(!sessions.length){ hist.append(el('div', 'px-2 py-3 text-sm text-mute', 'Belum ada riwayat.')); return; }
   sessions.forEach(c => {
@@ -417,9 +439,11 @@ function renderEntry(q, a, last){
     acts.append(iconBtn('copy', 'Salin jawaban', false, b => {
       navigator.clipboard.writeText(a.content).then(() => { b.title = 'Tersalin'; b.classList.add('text-brand'); setTimeout(() => { b.title = 'Salin jawaban'; b.classList.remove('text-brand'); }, 1500); }).catch(() => {});
     }));
-    const fb = fbGet(a.id);
-    acts.append(iconBtn('up', 'Membantu', fb === 'up', () => { fbSet(a.id, fb === 'up' ? '' : 'up'); render(); }));
-    acts.append(iconBtn('down', 'Kurang membantu', fb === 'down', () => { fbSet(a.id, fb === 'down' ? '' : 'down'); render(); }));
+    if(a.id){
+      const fb = fbGet(a.id);
+      acts.append(iconBtn('up', 'Membantu', fb === 'up', () => { fbSet(a.id, fb === 'up' ? '' : 'up'); render(); }));
+      acts.append(iconBtn('down', 'Kurang membantu', fb === 'down', () => { fbSet(a.id, fb === 'down' ? '' : 'down'); render(); }));
+    }
     body.append(acts);
   }
   e.append(body);
@@ -485,19 +509,27 @@ function render(){
 }
 function scrollDown(){ stream.scrollTop = stream.scrollHeight; }
 
-// Kirim pertanyaan: POST /api/chat. Server menyimpan pertanyaan, bertanya ke AI, lalu menyimpan jawabannya.
+// Kirim pertanyaan: POST /api/chat.
+// - User login: server menyimpan pertanyaan, bertanya ke AI, lalu menyimpan jawabannya.
+// - Tamu: server hanya meneruskan ke AI; riwayat obrolan dikirim dari halaman ini.
 async function send(raw){
   const text = (raw || '').trim();
   if(!text || busy) return;
   showFormErr('');
   const list = current();
+  const history = LOGGED_IN ? undefined : list
+    .filter(m => !m.error && (m.role === 'user' || m.role === 'assistant'))
+    .slice(-20)
+    .map(m => ({ role: m.role, content: m.content }));
   list.push({ role: 'user', content: text, t: Date.now() });
   input.value = '';
   autosize();
   setBusy(true);
   render();
 
-  const r = await api('/chat', 'POST', { session_id: activeId, message: text });
+  const r = await api('/chat', 'POST', LOGGED_IN
+    ? { session_id: activeId, message: text }
+    : { message: text, history });
 
   if(r.data && r.data.session_id) adopt(r.data.session_id, r.data.title);
 
@@ -508,7 +540,7 @@ async function send(raw){
     // Pertanyaan sudah tersimpan, AI belum menjawab -> tombol "Kirim ulang".
     errors[activeId] = MSG.aiDown;
   } else {
-    // 422 / 429 / 404 / server tidak terjangkau: pertanyaan TIDAK tersimpan,
+    // 422 / 429 / 404 / 419 / tamu gagal / server tidak terjangkau: pertanyaan TIDAK tersimpan,
     // jadi hapus dari layar dan kembalikan teksnya ke kolom input.
     list.pop();
     input.value = text;
@@ -578,7 +610,7 @@ function hideModal(){ $('modal').classList.add('hidden'); $('modal').classList.r
 document.querySelectorAll('[data-icon]').forEach(n => n.innerHTML = svg(n.dataset.icon));
 $('btnSend').onclick = () => send(input.value);
 $('btnNew').onclick = newChat;
-$('btnClear').onclick = clearAll;
+if($('btnClear')) $('btnClear').onclick = clearAll;
 $('btnFaq').onclick = openFaq;
 $('btnMenu').onclick = openMenu;
 $('scrim').onclick = closeMenu;
@@ -625,6 +657,7 @@ rz.addEventListener('dblclick', () => { curW = setSide(SIDE_DEF); saveSide(); })
 renderContact();
 render();
 (async () => {
+  if(!LOGGED_IN) return;
   if(!(await refreshSessions())) showFormErr(MSG.offline);
   if(sessions.length) await openChat(sessions[0].id);
 })();
