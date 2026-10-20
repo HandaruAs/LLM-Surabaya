@@ -37,7 +37,8 @@ class AuthTest extends TestCase
         $this->post('/admin/login', ['email' => $admin->email, 'password' => 'CorrectHorseBattery1!'])
             ->assertRedirect('/admin');
         $this->assertAuthenticatedAs($admin);
-        $this->get('/admin')->assertOk();
+        $this->get('/admin')->assertRedirect('/admin/documents');
+        $this->get('/admin/documents')->assertOk();
 
         $this->post('/admin/logout')->assertRedirect('/admin/login'); // lalu diteruskan ke /login
         $this->assertGuest();
@@ -92,7 +93,7 @@ class AuthTest extends TestCase
         // Admin memakai session (guard web), tanpa JWT.
         $this->assertAuthenticatedAs($admin, 'web');
         $this->assertNull($response->getCookie(config('jwt.cookie'), false));
-        $this->get('/admin')->assertOk();
+        $this->get('/admin')->assertRedirect('/admin/documents');
         $this->get('/admin/documents')->assertOk();
 
         // Membuka /login lagi saat masih login admin -> langsung ke dashboard.

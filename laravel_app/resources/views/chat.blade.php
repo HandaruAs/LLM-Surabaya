@@ -1,117 +1,189 @@
 <!DOCTYPE html>
 <html lang="id" class="h-full">
 <head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<meta name="csrf-token" content="{{ csrf_token() }}">
-<title>{{ config('app.name', 'LLM Surabaya') }}</title>
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;700&family=Source+Serif+4:wght@400;600&display=swap" rel="stylesheet">
-@vite(['resources/css/app.css', 'resources/js/app.js'])
+@include('partials.head')
 </head>
-<body class="h-full bg-paper font-sans text-base leading-relaxed text-ink">
+@php
+    $user = auth('jwt')->user();
+    $initials = $user
+        ? (collect(preg_split('/\s+/', trim($user->name)))->filter()->take(2)->map(fn ($p) => mb_strtoupper(mb_substr($p, 0, 1)))->implode('') ?: 'AN')
+        : 'AN';
+    $icons = \App\Support\Icons::ALL;
+    $faq = [
+        ['Apa perbedaan pajak daerah dan retribusi daerah?', 'Pajak daerah adalah pungutan wajib kepada daerah oleh orang pribadi atau badan tanpa imbalan langsung, dan hasilnya dipakai untuk kepentingan daerah. Retribusi dibayar atas jasa atau perizinan tertentu yang disediakan pemerintah daerah, sehingga pembayarnya menerima imbalan langsung.'],
+        ['Apa itu APBD dan mengapa penting bagi warga?', 'APBD adalah rencana keuangan tahunan pemerintah daerah yang ditetapkan bersama DPRD. Isinya mencakup pendapatan, belanja, dan pembiayaan daerah. Dari sinilah layanan publik dan pembangunan dibiayai.'],
+        ['Apa itu PBB-P2 dan siapa yang wajib membayarnya?', 'PBB-P2 adalah Pajak Bumi dan Bangunan Perdesaan dan Perkotaan yang dikelola pemerintah daerah. Yang wajib membayar adalah orang pribadi atau badan yang memiliki, menguasai, atau memperoleh manfaat atas bumi dan/atau bangunan.'],
+        ['Apa itu BPHTB dan kapan dibayar?', 'BPHTB adalah Bea Perolehan Hak atas Tanah dan Bangunan, yaitu pajak atas perolehan hak, misalnya karena jual beli, hibah, atau waris. Umumnya dibayar oleh pihak yang memperoleh hak. Waktu dan tata cara pembayarannya mengikuti ketentuan daerah, sebaiknya konfirmasi ke petugas.'],
+        ['Bagaimana jika terlambat membayar pajak daerah?', 'Keterlambatan umumnya dikenai sanksi administratif berupa denda. Besaran dan ketentuannya diatur dalam peraturan daerah, jadi periksa ketentuan yang berlaku atau tanyakan kepada petugas.'],
+    ];
+@endphp
+<body class="h-full bg-paper font-sans text-ink">
 <div class="relative grid h-dvh grid-cols-1 md:grid-cols-[var(--side-w)_minmax(0,1fr)]">
 
-  <aside id="side" class="fixed inset-y-0 left-0 z-20 flex w-[19rem] max-w-[88vw] -translate-x-full flex-col gap-4 overflow-y-auto border-r border-line bg-card px-4 py-5 transition-transform md:static md:w-auto md:max-w-none md:translate-x-0">
+  {{-- ================= Sidebar ================= --}}
+  <aside id="side" class="fixed inset-y-0 left-0 z-30 flex w-[19rem] max-w-[88vw] -translate-x-full flex-col gap-4 overflow-y-auto border-r border-line bg-card px-4 py-5 transition-transform md:static md:w-auto md:max-w-none md:translate-x-0">
     <div class="flex items-center gap-3">
-      <div class="grid size-10 place-items-center rounded-xl bg-brand text-paper"><i data-icon="landmark" class="block size-5"></i></div>
+      <div class="grid size-10 place-items-center rounded-xl bg-brand text-paper shadow-sm"><x-icon name="landmark" class="size-5" /></div>
       <div>
-        <div class="font-serif text-lg leading-tight font-semibold">LLM Surabaya</div>
+        <div class="font-serif text-lg font-semibold leading-tight">LLM Surabaya</div>
         <div class="text-xs text-mute">Informasi keuangan daerah</div>
       </div>
     </div>
 
-    <button id="btnNew" type="button" class="flex w-full cursor-pointer items-center justify-center gap-2 rounded-xl border border-brand px-3 py-2.5 font-medium text-brand hover:bg-tint">
-      <i data-icon="newchat" class="block size-5"></i>Obrolan baru
+    <button id="btnNew" type="button" class="inline-flex w-full cursor-pointer items-center justify-center gap-2 rounded-xl bg-brand px-4 py-2.5 text-sm font-semibold text-paper shadow-sm transition hover:bg-brand-strong active:translate-y-px">
+      <x-icon name="newchat" class="size-4" />Obrolan baru
     </button>
 
     @auth('jwt')
-    <div class="flex min-h-[7rem] flex-1 flex-col gap-1">
-      <div class="flex items-center justify-between px-1 text-xs text-mute">
+    <div class="flex min-h-[8rem] flex-1 flex-col">
+      <div class="flex items-center justify-between px-1 pb-1 text-xs font-semibold uppercase tracking-wider text-mute">
         <span>Riwayat</span>
-        <button id="btnClear" type="button" class="cursor-pointer hover:text-ink">Hapus semua</button>
+        <button id="btnClear" type="button" class="cursor-pointer font-medium normal-case tracking-normal hover:text-danger-ink">Hapus semua</button>
       </div>
-      <nav id="hist" class="flex min-h-0 flex-1 flex-col gap-0.5 overflow-y-auto"></nav>
+      <div class="relative mb-2">
+        <span class="pointer-events-none absolute inset-y-0 left-3 grid place-items-center text-mute"><x-icon name="search" class="size-4" /></span>
+        <input id="histSearch" type="search" placeholder="Cari riwayat…" aria-label="Cari riwayat" class="field py-2 pl-9">
+      </div>
+      <nav id="hist" class="flex min-h-0 flex-1 flex-col gap-0.5 overflow-y-auto" aria-label="Riwayat percakapan"></nav>
     </div>
     @else
-    {{-- Tamu: tidak ada riwayat tersimpan. --}}
-    <div class="flex flex-1 flex-col">
+    {{-- Tamu: riwayat tidak disimpan. --}}
+    <div class="flex flex-1 flex-col gap-3">
       @if (auth('web')->user()?->isAdmin())
-      <a href="{{ route('admin.dashboard') }}" class="mb-3 flex items-center justify-between rounded-xl border border-brand px-3.5 py-2.5 text-sm font-medium text-brand hover:bg-tint">
-        Kembali ke area admin <span aria-hidden="true">→</span>
+      <a href="{{ route('admin.dashboard') }}" class="flex items-center justify-between rounded-xl border border-brand px-3.5 py-2.5 text-sm font-medium text-brand transition hover:bg-tint">
+        Kembali ke area admin <x-icon name="arrow" class="size-4" />
       </a>
       @endif
-      <div class="rounded-xl border border-line p-3.5">
-        <div class="text-sm font-medium">Riwayat tidak disimpan</div>
-        <p class="mt-1 text-sm text-mute">Kamu belum masuk. Percakapan ini akan hilang saat halaman ditutup atau dimuat ulang.</p>
-        <div class="mt-3 flex gap-2">
-          <a href="{{ route('login') }}" class="flex-1 rounded-lg bg-brand px-3 py-2 text-center text-sm font-medium text-paper hover:opacity-90">Masuk</a>
-          <a href="{{ route('register') }}" class="flex-1 rounded-lg border border-line px-3 py-2 text-center text-sm font-medium hover:bg-tint">Daftar</a>
-        </div>
+      <div class="rounded-2xl border border-line p-4">
+        <div class="flex items-center gap-2 text-sm font-semibold"><x-icon name="clock" class="size-4 text-gold" />Riwayat tidak disimpan</div>
+        <p class="mt-1.5 text-sm leading-6 text-mute">Kamu belum masuk. Percakapan ini akan hilang saat halaman ditutup atau dimuat ulang. Masuk atau daftar lewat tombol di kanan atas agar riwayat tersimpan.</p>
       </div>
     </div>
     @endauth
 
-    <div class="shrink-0 border-t border-line pt-3">
-      <button id="btnFaq" type="button" class="flex w-full cursor-pointer items-center justify-between rounded-lg px-2.5 py-2 text-sm font-medium hover:bg-tint">
-        <span class="flex items-center gap-2.5"><i data-icon="help" class="block size-4 text-brand"></i>FAQ</span>
-        <i data-icon="chevron" class="block size-4 text-mute"></i>
+    <div class="space-y-3 border-t border-line pt-3">
+      <button id="btnFaq" type="button" class="flex w-full cursor-pointer items-center justify-between rounded-xl px-3 py-2 text-sm font-medium transition hover:bg-tint">
+        <span class="flex items-center gap-2.5"><x-icon name="help" class="size-4 text-brand" />FAQ</span>
+        <x-icon name="chevron" class="size-4 text-mute" />
       </button>
-      <div id="contact" class="mt-3 rounded-xl bg-tint p-3"></div>
-      @auth('jwt')
-      <div class="mt-3 flex items-center justify-between gap-2 px-1">
-        <div class="min-w-0">
-          <div class="truncate text-sm font-medium">{{ auth('jwt')->user()->name }}</div>
-          <div class="truncate text-xs text-mute">{{ auth('jwt')->user()->email }}</div>
-        </div>
-        <form method="POST" action="{{ route('logout') }}">
-          @csrf
-          <button type="submit" class="cursor-pointer rounded-lg border border-line px-2.5 py-1.5 text-xs font-medium hover:bg-tint">Keluar</button>
-        </form>
+
+      <div class="rounded-2xl border border-line bg-tint p-4">
+        <div class="text-sm font-semibold">Hubungi kami</div>
+        <ul class="mt-3 space-y-2.5 text-sm text-mute">
+          <li class="flex gap-2.5"><x-icon name="phone" class="mt-0.5 size-3.5 text-brand" />
+            <div class="flex flex-col"><a class="hover:text-ink hover:underline" href="tel:+62315321444">(031) 5321444</a><a class="hover:text-ink hover:underline" href="tel:+623199277339">(031) 99277339</a></div></li>
+          <li class="flex gap-2.5"><x-icon name="mail" class="mt-0.5 size-3.5 text-brand" />
+            <div class="flex min-w-0 flex-col"><a class="break-all hover:text-ink hover:underline" href="mailto:dinkominfo@surabaya.go.id">dinkominfo@surabaya.go.id</a><a class="break-all hover:text-ink hover:underline" href="mailto:mediacenter@surabaya.go.id">mediacenter@surabaya.go.id</a></div></li>
+          <li class="flex gap-2.5"><x-icon name="pin" class="mt-0.5 size-3.5 text-brand" />
+            <address class="not-italic leading-relaxed">Jl. Jimerto No. 25-27, Ketabang, Kec. Genteng, Surabaya 60272</address></li>
+        </ul>
       </div>
-      @endauth
+
     </div>
   </aside>
-  <div id="scrim" class="fixed inset-0 z-10 hidden bg-black/40 md:hidden"></div>
+  <div id="scrim" class="fixed inset-0 z-20 hidden bg-scrim md:hidden"></div>
 
   <div id="resizer" role="separator" aria-orientation="vertical" aria-label="Ubah lebar sidebar"
        class="absolute inset-y-0 z-20 hidden w-1.5 cursor-col-resize touch-none transition-colors hover:bg-brand/40 active:bg-brand/60 md:left-[calc(var(--side-w)-3px)] md:block"></div>
 
+  {{-- ================= Area percakapan ================= --}}
   <section class="flex min-h-0 min-w-0 flex-col">
-    <header class="relative flex items-center gap-2 border-b border-line bg-card px-3 py-3 md:px-6">
-      <button id="btnMenu" type="button" aria-label="Buka menu" class="grid size-9 cursor-pointer place-items-center rounded-lg hover:bg-tint md:hidden"><i data-icon="menu" class="block size-5"></i></button>
-      <h1 id="title" class="truncate font-serif text-lg font-semibold"></h1>
-      <span class="absolute bottom-[-1px] left-0 h-[3px] w-16 bg-gold"></span>
+    <header class="relative flex items-center gap-3 border-b border-line bg-card px-4 py-3.5 md:px-6">
+      <button id="btnMenu" type="button" aria-label="Buka menu" class="inline-grid size-9 cursor-pointer place-items-center rounded-lg text-mute transition hover:bg-tint hover:text-ink md:hidden"><x-icon name="menu" class="size-5" /></button>
+      <div class="min-w-0 flex-1">
+        <h1 id="title" class="truncate font-serif text-lg font-semibold">Obrolan baru</h1>
+        <p id="subtitle" class="truncate text-xs text-mute">Tanya jawab keuangan daerah Kota Surabaya</p>
+      </div>
+      @auth('jwt')
+      <div class="flex shrink-0 items-center gap-2 sm:gap-3">
+        <div class="hidden items-center gap-2.5 sm:flex">
+          <span class="grid size-8 shrink-0 place-items-center rounded-full bg-tint text-xs font-bold text-brand">{{ $initials }}</span>
+          <div class="max-w-[12rem] leading-tight">
+            <div class="truncate text-sm font-semibold">{{ $user->name }}</div>
+            <div class="truncate text-xs text-mute">{{ $user->email }}</div>
+          </div>
+        </div>
+        <form method="POST" action="{{ route('logout') }}">
+          @csrf
+          <button type="submit" class="inline-flex cursor-pointer items-center gap-1.5 rounded-xl border border-line px-3 py-2 text-sm font-semibold text-mute transition hover:border-danger hover:text-danger-ink">
+            <x-icon name="logout" class="size-4" />Keluar
+          </button>
+        </form>
+      </div>
+      @else
+      <div class="flex shrink-0 items-center gap-2">
+        <a href="{{ route('login') }}" class="inline-flex items-center gap-1.5 rounded-xl border border-line px-3 py-2 text-sm font-semibold transition hover:bg-tint"><x-icon name="login" class="size-4" />Masuk</a>
+        <a href="{{ route('register') }}" class="rounded-xl bg-brand px-3 py-2 text-sm font-semibold text-paper shadow-sm transition hover:bg-brand-strong">Daftar</a>
+      </div>
+      @endauth
+      <span class="absolute -bottom-px left-0 h-[3px] w-16 bg-gold"></span>
     </header>
 
     <div id="stream" class="flex-1 overflow-y-auto px-4 py-8 md:px-8">
-      <div id="col" class="mx-auto flex max-w-4xl flex-col gap-10"></div>
+      <div id="col" class="mx-auto flex max-w-content flex-col gap-10"></div>
     </div>
 
-    <div class="px-4 pt-2 pb-4 md:px-8">
-      <div class="mx-auto max-w-4xl">
-        <p id="formErr" role="alert" class="mb-2 hidden rounded-lg bg-red-50 px-3 py-2 text-sm text-red-800 dark:bg-red-950 dark:text-red-300"></p>
-        <div class="flex items-end gap-2 rounded-2xl border border-line bg-card py-2 pr-2 pl-4 shadow-sm focus-within:border-brand">
-          <textarea id="input" rows="1" placeholder="Tulis pertanyaan Anda tentang pajak, anggaran, atau retribusi" aria-label="Pertanyaan"
-                    class="max-h-40 flex-1 resize-none bg-transparent py-1.5 leading-normal outline-none placeholder:text-mute"></textarea>
-          <button id="btnSend" type="button" aria-label="Kirim" class="grid size-10 shrink-0 cursor-pointer place-items-center rounded-xl bg-brand text-paper hover:opacity-90 disabled:cursor-wait disabled:opacity-50"><i data-icon="send" class="block size-5"></i></button>
+    <div class="px-4 pt-2 pb-4 md:px-8 md:pb-5">
+      <div class="mx-auto max-w-content">
+        <p id="formErr" role="alert" class="mb-2 hidden rounded-xl bg-danger-bg px-3 py-2 text-sm text-danger-ink"></p>
+        <div class="rounded-2xl border border-line bg-card p-2 shadow-card transition focus-within:border-brand focus-within:ring-4 focus-within:ring-tint">
+          <textarea id="input" rows="2" aria-label="Pertanyaan" placeholder="Tulis pertanyaan Anda tentang pajak, anggaran, atau retribusi"
+                    class="block max-h-40 w-full resize-none border-0 bg-transparent px-2 py-1.5 text-[15px] leading-6 text-ink outline-none placeholder:text-mute"></textarea>
+          <div class="flex items-center justify-between gap-2 px-1 pt-1">
+            <div id="chips" class="flex flex-wrap gap-1.5"></div>
+            <div class="flex items-center gap-3">
+              <span class="hidden text-xs text-mute sm:inline"><kbd class="rounded border border-line px-1 font-sans">Enter</kbd> kirim · <kbd class="rounded border border-line px-1 font-sans">Shift</kbd>+<kbd class="rounded border border-line px-1 font-sans">Enter</kbd> baris baru</span>
+              <button id="btnSend" type="button" aria-label="Kirim" class="grid size-10 cursor-pointer place-items-center rounded-xl bg-brand text-paper shadow-sm transition hover:bg-brand-strong disabled:cursor-wait disabled:opacity-50"><x-icon name="send" class="size-5" /></button>
+            </div>
+          </div>
         </div>
-        <p class="mt-2 text-center text-xs text-mute">Informasi bersifat panduan umum. Untuk keputusan penting, pastikan ke instansi resmi.<br>Jangan menuliskan data pribadi seperti NIK atau nomor rekening. @auth Riwayat tersimpan di akunmu. @else Riwayat tidak disimpan karena kamu belum masuk. @endauth</p>
+        <p class="mt-2 text-center text-xs leading-5 text-mute">
+          Informasi bersifat panduan umum. Untuk keputusan penting, pastikan ke instansi resmi. Jangan menuliskan NIK atau nomor rekening.
+          @auth('jwt') Riwayat tersimpan di akunmu. @else Riwayat tidak disimpan karena kamu belum masuk. @endauth
+        </p>
       </div>
     </div>
   </section>
 </div>
 
-<div id="modal" class="fixed inset-0 z-30 hidden place-items-center bg-black/50 p-4" role="dialog" aria-modal="true">
-  <div class="flex max-h-[85dvh] w-full max-w-xl flex-col overflow-hidden rounded-2xl bg-card shadow-xl">
-    <div class="flex items-center justify-between border-b border-line px-5 py-3">
-      <h2 class="font-serif text-lg font-semibold">FAQ</h2>
-      <button id="mClose" type="button" aria-label="Tutup" class="grid size-8 cursor-pointer place-items-center rounded-lg hover:bg-tint"><i data-icon="x" class="block size-5"></i></button>
+{{-- ================= FAQ ================= --}}
+<dialog id="faq" aria-labelledby="faqTitle" class="m-auto w-[calc(100%-2rem)] max-w-xl overflow-hidden rounded-2xl border border-line bg-card p-0 text-ink shadow-xl">
+  <div class="flex max-h-[85dvh] flex-col">
+    <div class="flex items-center gap-3 border-b border-line px-5 py-4">
+      <span class="grid size-10 place-items-center rounded-xl bg-tint text-brand"><x-icon name="help" class="size-5" /></span>
+      <h2 id="faqTitle" class="flex-1 font-serif text-lg font-semibold">Pertanyaan yang sering diajukan</h2>
+      <button type="button" data-close aria-label="Tutup" class="inline-grid size-9 cursor-pointer place-items-center rounded-lg text-mute transition hover:bg-tint hover:text-ink"><x-icon name="x" class="size-5" /></button>
     </div>
-    <div id="mBody" class="overflow-y-auto px-5 py-3"></div>
+    <div class="overflow-y-auto px-5 py-2">
+      @foreach ($faq as [$q, $a])
+        <details class="group border-b border-line py-3 last:border-0" @if ($loop->first) open @endif>
+          <summary class="flex cursor-pointer list-none items-center justify-between gap-3 font-serif text-[17px] font-semibold [&::-webkit-details-marker]:hidden">
+            <span>{{ $q }}</span>
+            <span class="grid size-8 shrink-0 place-items-center rounded-full bg-tint text-brand"><x-icon name="chevron" class="size-4 transition group-open:rotate-90" /></span>
+          </summary>
+          <p class="mt-2 pb-1 leading-7 text-mute">{{ $a }}</p>
+        </details>
+      @endforeach
+    </div>
   </div>
-</div>
+</dialog>
+
+{{-- ================= Dialog konfirmasi ================= --}}
+<dialog id="confirm" aria-labelledby="confirmTitle" class="m-auto w-[calc(100%-2rem)] max-w-md rounded-2xl border border-line bg-card p-0 text-ink shadow-xl">
+  <div class="p-6">
+    <div class="flex gap-4">
+      <span class="grid size-11 shrink-0 place-items-center rounded-full bg-danger-bg text-danger-ink"><x-icon name="trash" class="size-5" /></span>
+      <div class="min-w-0">
+        <h2 id="confirmTitle" class="font-serif text-lg font-semibold"></h2>
+        <p id="confirmText" class="mt-2 text-sm leading-6 text-mute"></p>
+      </div>
+    </div>
+    <div class="mt-6 flex justify-end gap-2">
+      <button type="button" data-close class="cursor-pointer rounded-xl border border-line px-4 py-2.5 text-sm font-semibold transition hover:bg-tint">Batal</button>
+      <button type="button" id="confirmOk" class="inline-flex cursor-pointer items-center gap-2 rounded-xl bg-danger-ink px-4 py-2.5 text-sm font-semibold text-card transition hover:opacity-90"><x-icon name="trash" class="size-4" />Hapus</button>
+    </div>
+  </div>
+</dialog>
 
 <script nonce="{{ Vite::cspNonce() }}">
 /* ---------- Koneksi ke API backend (laravel_app/API.md) ---------- */
@@ -119,10 +191,11 @@ const API = @json(url('/api'));
 const FB_KEY = 'llm-surabaya-feedback';
 const CSRF = document.querySelector('meta[name="csrf-token"]').content;
 
-// Login memakai session (cookie). Tamu boleh bertanya, tapi riwayatnya tidak disimpan:
+// Login memakai JWT di cookie. Tamu boleh bertanya, tapi riwayatnya tidak disimpan:
 // percakapan tamu hanya ada di memori halaman ini dan dikirim ulang sebagai "history".
-const LOGGED_IN = @json(auth('jwt')->check());
-const USER_NAME = @json(auth('jwt')->user()?->name);
+const LOGGED_IN = @json($user !== null);
+const USER_NAME = @json($user?->name);
+const ICONS = @json($icons);
 
 // Panggil API. Selalu mengembalikan { ok, status, data } — status 0 berarti server tidak bisa dihubungi.
 async function api(path, method = 'GET', body){
@@ -147,42 +220,12 @@ const MSG = {
   generic: 'Terjadi kesalahan. Silakan coba lagi.'
 };
 
-const CONTACT = {
-  phones: [['(031) 5321444', '+62315321444'], ['(031) 99277339', '+623199277339']],
-  emails: ['dinkominfo@surabaya.go.id', 'mediacenter@surabaya.go.id'],
-  address: 'Jl. Jimerto No. 25-27, Ketabang, Kec. Genteng, Kota Surabaya, Jawa Timur 60272'
-};
-
-const P = {
-  landmark: '<line x1="3" x2="21" y1="22" y2="22"/><line x1="6" x2="6" y1="18" y2="11"/><line x1="10" x2="10" y1="18" y2="11"/><line x1="14" x2="14" y1="18" y2="11"/><line x1="18" x2="18" y1="18" y2="11"/><polygon points="12 2 20 7 4 7"/>',
-  send: '<path d="m22 2-7 20-4-9-9-4Z"/><path d="M22 2 11 13"/>',
-  newchat: '<path d="M12 3H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.375 2.625a1 1 0 0 1 3 3l-9.013 9.014a2 2 0 0 1-.853.505l-2.873.84a.5.5 0 0 1-.62-.62l.84-2.873a2 2 0 0 1 .506-.852z"/>',
-  trash: '<path d="M3 6h18"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"/><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>',
-  help: '<circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><path d="M12 17h.01"/>',
-  menu: '<line x1="4" x2="20" y1="12" y2="12"/><line x1="4" x2="20" y1="6" y2="6"/><line x1="4" x2="20" y1="18" y2="18"/>',
-  x: '<path d="M18 6 6 18"/><path d="m6 6 12 12"/>',
-  copy: '<rect width="14" height="14" x="8" y="8" rx="2"/><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/>',
-  up: '<path d="M7 10v12"/><path d="M15 5.88 14 10h5.83a2 2 0 0 1 1.92 2.56l-2.33 8A2 2 0 0 1 17.5 22H4a2 2 0 0 1-2-2v-8a2 2 0 0 1 2-2h2.76a2 2 0 0 0 1.79-1.11L12 2a3.13 3.13 0 0 1 3 3.88Z"/>',
-  down: '<path d="M17 14V2"/><path d="M9 18.12 10 14H4.17a2 2 0 0 1-1.92-2.56l2.33-8A2 2 0 0 1 6.5 2H20a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2h-2.76a2 2 0 0 0-1.79 1.11L12 22a3.13 3.13 0 0 1-3-3.88Z"/>',
-  file: '<path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z"/><path d="M14 2v4a2 2 0 0 0 2 2h4"/><path d="M16 13H8"/><path d="M16 17H8"/>',
-  phone: '<path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z"/>',
-  mail: '<rect width="20" height="16" x="2" y="4" rx="2"/><path d="m22 7-8.97 5.7a1.94 1.94 0 0 1-2.06 0L2 7"/>',
-  pin: '<path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0Z"/><circle cx="12" cy="10" r="3"/>',
-  chevron: '<path d="m9 18 6-6-6-6"/>',
-  home: '<path d="M15 21v-8a1 1 0 0 0-1-1h-4a1 1 0 0 0-1 1v8"/><path d="M3 10a2 2 0 0 1 .709-1.528l7-5.999a2 2 0 0 1 2.582 0l7 5.999A2 2 0 0 1 21 10v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/>',
-  pie: '<path d="M21 12c.552 0 1.005-.449.95-.998a10 10 0 0 0-8.953-8.951c-.55-.055-.998.398-.998.95v8a1 1 0 0 0 1 1z"/><path d="M21.21 15.89A10 10 0 1 1 8 2.83"/>',
-  receipt: '<path d="M4 2v20l2-1 2 1 2-1 2 1 2-1 2 1 2-1 2 1V2l-2 1-2-1-2 1-2-1-2 1-2-1-2 1Z"/><path d="M16 8h-6a2 2 0 1 0 0 4h4a2 2 0 1 1 0 4H8"/><path d="M12 17.5v-11"/>',
-  wallet: '<path d="M19 7V4a1 1 0 0 0-1-1H5a2 2 0 0 0 0 4h15a1 1 0 0 1 1 1v4h-3a2 2 0 0 0 0 4h3a1 1 0 0 0 1-1v-2a1 1 0 0 0-1-1"/><path d="M3 5v14a2 2 0 0 0 2 2h15a1 1 0 0 0 1-1v-4"/>'
-};
-
 const TOPICS = [];
 
-const FAQ = [
-  ['Apa perbedaan pajak daerah dan retribusi daerah?', 'Pajak daerah adalah pungutan wajib kepada daerah oleh orang pribadi atau badan tanpa imbalan langsung, dan hasilnya dipakai untuk kepentingan daerah. Retribusi dibayar atas jasa atau perizinan tertentu yang disediakan pemerintah daerah, sehingga pembayarnya menerima imbalan langsung.'],
-  ['Apa itu APBD dan mengapa penting bagi warga?', 'APBD adalah rencana keuangan tahunan pemerintah daerah yang ditetapkan bersama DPRD. Isinya mencakup pendapatan, belanja, dan pembiayaan daerah. Dari sinilah layanan publik dan pembangunan dibiayai.'],
-  ['Apa itu PBB-P2 dan siapa yang wajib membayarnya?', 'PBB-P2 adalah Pajak Bumi dan Bangunan Perdesaan dan Perkotaan yang dikelola pemerintah daerah. Yang wajib membayar adalah orang pribadi atau badan yang memiliki, menguasai, atau memperoleh manfaat atas bumi dan/atau bangunan.'],
-  ['Apa itu BPHTB dan kapan dibayar?', 'BPHTB adalah Bea Perolehan Hak atas Tanah dan Bangunan, yaitu pajak atas perolehan hak, misalnya karena jual beli, hibah, atau waris. Umumnya dibayar oleh pihak yang memperoleh hak. Waktu dan tata cara pembayarannya mengikuti ketentuan daerah, sebaiknya konfirmasi ke petugas.'],
-  ['Bagaimana jika terlambat membayar pajak daerah?', 'Keterlambatan umumnya dikenai sanksi administratif berupa denda. Besaran dan ketentuannya diatur dalam peraturan daerah, jadi periksa ketentuan yang berlaku atau tanyakan kepada petugas.']
+// Chip di kolom tulis: mengisi contoh pertanyaan.
+const CHIPS = [
+  ['APBD 2025', 'Berapa total pendapatan dalam APBD Kota Surabaya tahun 2025?'],
+  ['Pajak daerah', 'Apa saja jenis pajak daerah di Kota Surabaya?']
 ];
 
 const $ = id => document.getElementById(id);
@@ -194,6 +237,7 @@ let draft = [];        // pesan obrolan baru sebelum server membuat sesinya
 const errors = {};     // id sesi -> pesan error untuk pertanyaan terakhir yang belum terjawab
 let busy = false;
 let loading = false;
+let histQuery = '';
 
 // Judul lengkap per sesi (pertanyaan pertama), disimpan di browser.
 // Judul dari server dipotong 40 karakter, jadi sidebar memakai yang ini.
@@ -225,14 +269,27 @@ async function fillTitles(){
   } finally { fillingTitles = false; }
 }
 
+// Judul di header: maksimal 40 karakter. Kalau batasnya jatuh di tengah kata,
+// mundur ke kata sebelumnya, lalu tambahkan titik-titik.
+function shortTitle(text, max = 40){
+  text = (text || '').replace(/\s+/g, ' ').trim();
+  if(text.length <= max) return text;
+  let cut = text.slice(0, max);
+  if(text[max] !== ' '){
+    const i = cut.lastIndexOf(' ');
+    if(i > 0) cut = cut.slice(0, i);
+  }
+  return cut.replace(/[\s,.;:!?-]+$/, '') + '…';
+}
+
 function el(tag, cls, text){
   const n = document.createElement(tag);
   if(cls) n.className = cls;
   if(text !== undefined) n.textContent = text;
   return n;
 }
-function svg(n){ return '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" class="size-full">' + (P[n] || '') + '</svg>'; }
-function ic(n, cls){ const s = el('span', cls || 'block size-4 shrink-0'); s.innerHTML = svg(n); return s; }
+function svg(name, cls){ return '<svg class="' + (cls || 'size-4') + ' shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' + (ICONS[name] || '') + '</svg>'; }
+function ic(name, cls){ const s = el('span', 'inline-flex shrink-0'); s.innerHTML = svg(name, cls); return s; }
 function active(){ return sessions.find(s => s.id === activeId); }
 function current(){ return activeId === null ? draft : (msgs[activeId] || []); }
 function fromApi(m){ return { id: m.id, role: m.role, content: m.content, sources: m.sources || [], t: Date.parse(m.created_at) || Date.now() }; }
@@ -261,40 +318,17 @@ function greet(){
   return USER_NAME ? `${timeGreet} ${USER_NAME}` : timeGreet;
 }
 
-// Judul di header: maksimal 40 karakter. Kalau batasnya jatuh di tengah kata,
-// mundur ke kata sebelumnya, lalu tambahkan titik-titik.
-function shortTitle(text, max = 40){
-  text = (text || '').replace(/\s+/g, ' ').trim();
-  if(text.length <= max) return text;
-  let cut = text.slice(0, max);
-  if(text[max] !== ' '){
-    const i = cut.lastIndexOf(' ');
-    if(i > 0) cut = cut.slice(0, i);
-  }
-  return cut.replace(/[\s,.;:!?-]+$/, '') + '…';
+// Nama sumber untuk ditampilkan: buang awalan internal dokumen admin ("admin:5:").
+function sourceName(s){
+  let name = typeof s === 'string' ? s : (s && (s.title || s.source || s.filename || s.file || s.url)) || String(s);
+  return name.replace(/^admin:\d+:/, '');
+}
+function sourceType(name){
+  const ext = (name.split('.').pop() || '').toLowerCase();
+  return ext === 'xlsx' ? 'Excel' : ext ? ext.toUpperCase() : 'Dokumen';
 }
 
-function renderContact(){
-  const box = $('contact');
-  box.append(el('div', 'text-sm font-medium', 'Hubungi kami'));
-  const ul = el('ul', 'mt-3 space-y-2.5 text-sm text-mute');
-  const item = (icon, inner) => {
-    const li = el('li', 'flex items-start gap-2.5');
-    li.append(ic(icon, 'mt-0.5 block size-3.5 shrink-0 text-brand'), inner);
-    ul.append(li);
-  };
-  const links = (arr, hrefOf, textOf) => {
-    const d = el('div', 'flex min-w-0 flex-col gap-1');
-    arr.forEach(x => { const a = el('a', 'break-all hover:text-ink hover:underline', textOf(x)); a.href = hrefOf(x); d.append(a); });
-    return d;
-  };
-  item('phone', links(CONTACT.phones, x => 'tel:' + x[1], x => x[0]));
-  item('mail', links(CONTACT.emails, x => 'mailto:' + x, x => x));
-  const addr = el('address', 'not-italic leading-relaxed', CONTACT.address);
-  item('pin', addr);
-  box.append(ul);
-}
-
+/* ---------- Riwayat (khusus user login) ---------- */
 async function refreshSessions(){
   if(!LOGGED_IN) return true; // tamu tidak punya riwayat tersimpan
   const r = await api('/sessions');
@@ -337,9 +371,11 @@ async function openChat(id){
 }
 
 async function delChat(id){
-  if(busy || !confirm('Hapus percakapan ini?')) return;
+  if(busy) return;
+  const s = sessions.find(x => x.id === id);
+  if(!(await confirmBox('Hapus percakapan?', '"' + (s ? shortTitle(titleOf(s), 60) : 'Percakapan ini') + '" beserta seluruh pesannya akan dihapus dari riwayat.'))) return;
   const r = await api('/sessions/' + id, 'DELETE');
-  if(!r.ok && r.status !== 404){ alert(r.status === 0 ? MSG.offline : MSG.generic); return; }
+  if(!r.ok && r.status !== 404){ showFormErr(r.status === 0 ? MSG.offline : MSG.generic); return; }
   sessions = sessions.filter(s => s.id !== id);
   delete msgs[id]; delete errors[id];
   delete fullTitles[id]; saveTitles();
@@ -348,9 +384,10 @@ async function delChat(id){
 }
 
 async function clearAll(){
-  if(busy || !sessions.length || !confirm('Hapus semua riwayat?')) return;
+  if(busy || !sessions.length) return;
+  if(!(await confirmBox('Hapus semua riwayat?', 'Seluruh ' + sessions.length + ' percakapan di akunmu akan dihapus dan tidak bisa dikembalikan.'))) return;
   const r = await api('/sessions', 'DELETE');
-  if(!r.ok){ alert(r.status === 0 ? MSG.offline : MSG.generic); return; }
+  if(!r.ok){ showFormErr(r.status === 0 ? MSG.offline : MSG.generic); return; }
   sessions = []; activeId = null; draft = [];
   Object.keys(msgs).forEach(k => delete msgs[k]);
   Object.keys(errors).forEach(k => delete errors[k]);
@@ -361,15 +398,20 @@ async function clearAll(){
 function renderHist(){
   if(!hist) return; // tamu: panel riwayat tidak ada
   hist.innerHTML = '';
-  if(!sessions.length){ hist.append(el('div', 'px-2 py-3 text-sm text-mute', 'Belum ada riwayat.')); return; }
-  sessions.forEach(c => {
+  const q = histQuery.trim().toLowerCase();
+  const list = q ? sessions.filter(s => (titleOf(s) || '').toLowerCase().includes(q)) : sessions;
+  if(!list.length){ hist.append(el('div', 'px-3 py-3 text-sm text-mute', q ? 'Tidak ada riwayat yang cocok.' : 'Belum ada riwayat.')); return; }
+  list.forEach(c => {
     const on = c.id === activeId;
-    const row = el('div', 'group flex items-center rounded-lg border-l-[3px] ' + (on ? 'border-brand bg-tint' : 'border-transparent hover:bg-tint'));
-    const open = el('button', 'min-w-0 flex-1 cursor-pointer bg-transparent px-2.5 py-2 text-left');
+    const row = el('div', 'group relative flex items-center rounded-xl transition ' + (on ? 'bg-tint text-brand' : 'text-ink hover:bg-tint'));
+    if(on) row.append(el('span', 'absolute inset-y-2 left-0 w-[3px] rounded-full bg-brand'));
+    const open = el('button', 'flex min-w-0 flex-1 cursor-pointer items-center gap-2.5 px-3 py-2 text-left');
     open.type = 'button';
-    open.append(el('div', 'line-clamp-2 text-sm font-medium break-words', titleOf(c)), el('div', 'text-xs text-mute', dayLabel(c.updated_at)));
+    const text = el('span', 'min-w-0');
+    text.append(el('span', 'line-clamp-2 break-words text-sm font-medium', titleOf(c)), el('span', 'block text-xs text-mute', dayLabel(c.updated_at)));
+    open.append(ic('message', 'size-4 ' + (on ? 'text-brand' : 'text-mute')), text);
     open.onclick = () => openChat(c.id);
-    const del = el('button', 'mr-1 cursor-pointer rounded-md p-1.5 text-mute hover:text-red-500 focus-visible:opacity-100 md:opacity-0 md:group-hover:opacity-100');
+    const del = el('button', 'mr-1.5 cursor-pointer rounded-md p-1.5 text-mute transition hover:text-danger focus-visible:opacity-100 ' + (on ? '' : 'md:opacity-0 md:group-hover:opacity-100'));
     del.type = 'button';
     del.setAttribute('aria-label', 'Hapus percakapan');
     del.append(ic('trash'));
@@ -379,119 +421,143 @@ function renderHist(){
   });
 }
 
-function sourceLabel(s){
-  if(typeof s === 'string') return s;
-  if(s && typeof s === 'object'){
-    const name = s.title || s.source || s.filename || s.file || s.url || '';
-    const page = s.page !== undefined ? ' (hal. ' + s.page + ')' : '';
-    return name ? name + page : JSON.stringify(s);
-  }
-  return String(s);
-}
-
-function iconBtn(icon, label, on, onclick){
-  const b = el('button', 'flex cursor-pointer items-center gap-1.5 rounded-md px-2 py-1 text-xs hover:bg-tint ' + (on ? 'text-brand' : 'text-mute'));
+/* ---------- Isi percakapan ---------- */
+function actionBtn(icon, label, on, onclick){
+  const b = el('button', 'inline-flex cursor-pointer items-center gap-1.5 rounded-lg px-2 py-1.5 text-xs font-medium transition ' + (on ? 'bg-tint text-brand' : 'text-mute hover:bg-tint hover:text-ink'));
   b.type = 'button';
-  b.title = label;
-  b.setAttribute('aria-label', label);
-  b.append(ic(icon, 'block size-4 shrink-0'));
+  if(on) b.setAttribute('aria-pressed', 'true');
+  b.append(ic(icon), document.createTextNode(label));
   b.onclick = () => onclick(b);
   return b;
 }
 
-function renderEntry(q, a, last){
-  const e = el('article', 'grid gap-x-8 gap-y-3 border-b border-line pb-10 last:border-0 last:pb-0 lg:grid-cols-[minmax(0,1fr)_13rem]');
-  const head = el('div', 'flex items-baseline justify-between gap-4 border-l-[3px] border-brand pl-4 lg:col-span-2');
-  head.append(el('h2', 'font-serif text-xl leading-snug font-semibold break-words', q.content));
-  if(q.t) head.append(el('time', 'shrink-0 text-xs text-mute', hm(q.t)));
-  e.append(head);
+function questionHeader(q){
+  const h = el('header', 'lg:col-span-2');
+  const box = el('div', 'min-w-0');
+  box.append(el('h2', 'font-serif text-xl font-semibold leading-snug break-words', q.content));
+  box.append(el('time', 'text-xs text-mute', 'Anda' + (q.t ? ' · ' + hm(q.t) : '')));
+  h.append(box);
+  return h;
+}
 
-  const body = el('div', 'min-w-0 pl-4');
+function loadingCard(){
+  const c = el('div', 'rounded-2xl border border-line bg-card p-5 shadow-card lg:col-span-2');
+  c.setAttribute('role', 'status');
+  const top = el('div', 'flex items-center gap-2 text-sm font-medium text-mute');
+  const dot = el('span', 'relative flex size-2');
+  dot.append(el('span', 'absolute inline-flex size-full animate-ping rounded-full bg-brand opacity-60'), el('span', 'relative inline-flex size-2 rounded-full bg-brand'));
+  top.append(dot, document.createTextNode('Menyusun jawaban…'));
+  const sk = el('div', 'mt-4 space-y-2.5 animate-pulse');
+  ['w-11/12', 'w-9/12', 'w-10/12'].forEach(w => sk.append(el('div', 'h-3 rounded-full bg-tint ' + w)));
+  const bar = el('div', 'mt-4 h-0.5 w-44 overflow-hidden rounded-full bg-line');
+  bar.append(el('div', 'h-full w-1/3 animate-sweep bg-brand'));
+  c.append(top, sk, bar);
+  return c;
+}
+
+function renderEntry(q, a, last){
+  const e = el('article', 'grid gap-x-8 gap-y-4 lg:grid-cols-[minmax(0,1fr)_15rem]');
+  e.append(questionHeader(q));
+
   if(!a){
     if(busy && last){
-      const p = el('div', 'flex flex-col gap-2 text-sm text-mute');
-      const bar = el('div', 'h-0.5 w-44 overflow-hidden rounded bg-line');
-      bar.append(el('div', 'sweep h-full w-1/3 bg-brand'));
-      p.append(el('span', '', 'Menyusun jawaban…'), bar);
-      body.append(p);
+      e.append(loadingCard());
     } else if(last && activeId !== null){
       // Tersimpan di server tapi belum dijawab: tawarkan kirim ulang (POST /api/sessions/{id}/retry).
-      const box = el('div', 'flex flex-wrap items-center gap-3 rounded-lg bg-red-50 px-3 py-2 text-red-800 dark:bg-red-950 dark:text-red-300');
-      box.append(el('span', 'text-sm', errors[activeId] || MSG.unanswered));
-      const again = el('button', 'cursor-pointer rounded-md border border-current px-2.5 py-1 text-sm font-medium hover:opacity-80', 'Kirim ulang');
+      const box = el('div', 'flex flex-wrap items-center gap-3 rounded-2xl bg-danger-bg px-4 py-3 text-danger-ink lg:col-span-2');
+      box.append(ic('alert', 'size-5'), el('span', 'flex-1 text-sm', errors[activeId] || MSG.unanswered));
+      const again = el('button', 'cursor-pointer rounded-lg border border-current px-3 py-1.5 text-sm font-semibold hover:opacity-80', 'Kirim ulang');
       again.type = 'button';
       again.onclick = retry;
       box.append(again);
-      body.append(box);
+      e.append(box);
     } else {
-      body.append(el('div', 'text-sm text-mute', 'Tidak terjawab.'));
+      e.append(el('div', 'text-sm text-mute lg:col-span-2', 'Tidak terjawab.'));
     }
-    e.append(body);
     return e;
   }
-  body.append(el('div', 'max-w-[68ch] font-serif text-[1.0625rem] leading-[1.75] break-words whitespace-pre-wrap' + (a.error ? ' rounded-lg bg-red-50 px-3 py-2 font-sans text-base text-red-800 dark:bg-red-950 dark:text-red-300' : ''), a.content));
 
-  if(!a.error){
-    const acts = el('div', 'mt-3 -ml-2 flex items-center gap-1');
-    acts.append(iconBtn('copy', 'Salin jawaban', false, b => {
-      navigator.clipboard.writeText(a.content).then(() => { b.title = 'Tersalin'; b.classList.add('text-brand'); setTimeout(() => { b.title = 'Salin jawaban'; b.classList.remove('text-brand'); }, 1500); }).catch(() => {});
-    }));
-    if(a.id){
-      const fb = fbGet(a.id);
-      acts.append(iconBtn('up', 'Membantu', fb === 'up', () => { fbSet(a.id, fb === 'up' ? '' : 'up'); render(); }));
-      acts.append(iconBtn('down', 'Kurang membantu', fb === 'down', () => { fbSet(a.id, fb === 'down' ? '' : 'down'); render(); }));
-    }
-    body.append(acts);
+  const list = (Array.isArray(a.sources) ? a.sources : (a.sources ? [a.sources] : [])).map(sourceName);
+  const card = el('div', 'min-w-0 rounded-2xl border border-line bg-card p-5 shadow-card' + (list.length ? '' : ' lg:col-span-2'));
+  const label = el('div', 'mb-3 flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-brand');
+  label.append(ic('landmark'), document.createTextNode('Jawaban'));
+  card.append(label);
+  card.append(el('div', 'max-w-measure font-serif text-[17px] leading-[1.75] break-words whitespace-pre-wrap', a.content));
+
+  const acts = el('div', 'mt-4 flex flex-wrap items-center gap-1 border-t border-line pt-3');
+  acts.append(actionBtn('copy', 'Salin', false, b => {
+    navigator.clipboard.writeText(a.content).then(() => {
+      b.lastChild.textContent = 'Tersalin';
+      setTimeout(() => { b.lastChild.textContent = 'Salin'; }, 1500);
+    }).catch(() => {});
+  }));
+  if(a.id){
+    const fb = fbGet(a.id);
+    acts.append(actionBtn('up', 'Membantu', fb === 'up', () => { fbSet(a.id, fb === 'up' ? '' : 'up'); render(false); }));
+    acts.append(actionBtn('down', 'Kurang membantu', fb === 'down', () => { fbSet(a.id, fb === 'down' ? '' : 'down'); render(false); }));
   }
-  e.append(body);
+  card.append(acts);
+  e.append(card);
 
-  const list = Array.isArray(a.sources) ? a.sources : (a.sources ? [a.sources] : []);
-  if(!a.error && list.length){
-    const side = el('aside', 'pl-4 text-sm text-mute lg:border-l lg:border-line');
-    side.append(el('div', 'mb-1.5 font-medium text-ink', 'Rujukan'));
-    const ul = el('ul', 'flex flex-col gap-1.5');
-    list.forEach(s => {
-      const li = el('li', 'flex items-start gap-2');
-      li.append(ic('file', 'mt-0.5 block size-3.5 shrink-0 text-brand'), el('span', 'min-w-0 break-words', sourceLabel(s)));
-      ul.append(li);
+  if(list.length){
+    const side = el('aside', 'space-y-2');
+    side.append(el('div', 'text-xs font-semibold uppercase tracking-wider text-mute', 'Rujukan'));
+    list.forEach((name, i) => {
+      const item = el('div', 'flex gap-3 rounded-xl border border-line bg-card p-3');
+      item.append(el('span', 'grid size-6 shrink-0 place-items-center rounded-md bg-tint text-[11px] font-bold text-brand', String(i + 1)));
+      const t = el('span', 'min-w-0 text-sm leading-5');
+      t.append(el('span', 'block break-words font-medium', name), el('span', 'text-xs text-mute', sourceType(name)));
+      item.append(t);
+      side.append(item);
     });
-    side.append(ul);
     e.append(side);
   }
+
   return e;
 }
 
 function renderWelcome(){
-  const w = el('div', 'mx-auto mt-[2vh] w-full max-w-3xl');
+  const w = el('div', 'mx-auto w-full max-w-3xl');
   const date = new Date().toLocaleDateString('id-ID', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
-  w.append(el('div', 'text-sm text-mute', date));
-  w.append(el('h2', 'mt-2 font-serif text-3xl leading-tight font-semibold md:text-4xl', greet() + '. Apa yang ingin Anda ketahui?'));
-  w.append(el('div', 'my-5 h-[3px] w-14 bg-gold'));
-  w.append(el('p', 'mb-8 max-w-[60ch] text-mute', 'Tanyakan seputar pajak daerah, anggaran, dan retribusi Kota Surabaya. Jawaban dilengkapi rujukan agar mudah ditelusuri.'));
-  const list = el('div', 'divide-y divide-line border-y border-line');
+  const pill = el('div', 'inline-flex items-center gap-2 rounded-full border border-line bg-card px-3 py-1 text-xs font-medium text-mute');
+  pill.append(el('span', 'size-1.5 rounded-full bg-gold'), document.createTextNode(date));
+  w.append(pill);
+  const h = el('h2', 'mt-4 font-serif text-3xl font-semibold leading-tight tracking-tight md:text-4xl');
+  h.append(document.createTextNode(greet() + '. Apa yang ingin Anda ketahui?'));
+  w.append(h);
+  w.append(el('div', 'my-5 h-[3px] w-14 rounded-full bg-gold'));
+  w.append(el('p', 'max-w-[60ch] text-mute', 'Tanyakan seputar pajak daerah, anggaran, dan retribusi Kota Surabaya. Jawaban dilengkapi rujukan agar mudah ditelusuri.'));
+  if(!TOPICS.length) return w;
+  const grid = el('div', 'mt-8 grid gap-3 sm:grid-cols-2');
   TOPICS.forEach(tp => {
-    const b = el('button', 'group grid w-full cursor-pointer grid-cols-[2.5rem_minmax(0,1fr)_auto] items-center gap-4 px-2 py-4 text-left hover:bg-tint');
+    const b = el('button', 'group flex cursor-pointer flex-col gap-3 rounded-2xl border border-line bg-card p-4 text-left shadow-card transition hover:-translate-y-0.5 hover:border-brand hover:shadow-lift');
     b.type = 'button';
-    const i = el('div', 'grid size-10 place-items-center rounded-full bg-tint text-brand group-hover:bg-card');
-    i.append(ic(tp.icon, 'block size-5'));
-    const txt = el('div', 'min-w-0');
-    txt.append(el('div', 'font-serif text-lg font-semibold', tp.title), el('div', 'text-sm text-mute', tp.q));
-    b.append(i, txt, ic('chevron', 'block size-5 text-mute transition-transform group-hover:translate-x-1 group-hover:text-brand'));
+    const top = el('div', 'flex items-center justify-between');
+    const i = el('span', 'grid size-10 place-items-center rounded-xl bg-tint text-brand');
+    i.innerHTML = svg(tp.icon, 'size-5');
+    top.append(i, ic('arrow', 'size-4 text-mute transition group-hover:translate-x-0.5 group-hover:text-brand'));
+    const txt = el('div');
+    txt.append(el('div', 'font-serif text-[17px] font-semibold leading-snug', tp.title), el('div', 'mt-1 text-sm leading-5 text-mute', tp.q));
+    b.append(top, txt);
     b.onclick = () => send(tp.q);
-    list.append(b);
+    grid.append(b);
   });
-  w.append(list);
+  w.append(grid);
   return w;
 }
 
-function render(){
+function render(scroll = true){
   renderHist();
   const c = active();
   const ms = current();
-  // Header: pertanyaan pertama yang utuh, dipotong 40 karakter di batas kata.
-  const first = ms.length && ms[0].role === 'user' ? ms[0].content : '';
-  $('title').textContent = first ? shortTitle(first) : (c ? shortTitle(titleOf(c)) : 'Obrolan baru');
+  const questions = ms.filter(m => m.role === 'user').length;
+  $('title').textContent = c ? shortTitle(titleOf(c)) : (ms.length ? shortTitle(ms[0].content) : 'Obrolan baru');
+  const firstSource = ms.find(m => m.role === 'assistant' && m.sources && m.sources.length);
+  $('subtitle').textContent = questions
+    ? questions + ' pertanyaan' + (firstSource ? ' · rujukan: ' + sourceName(firstSource.sources[0]) : '')
+    : 'Tanya jawab keuangan daerah Kota Surabaya';
   col.innerHTML = '';
+  if(!ms.length) scroll = false; // halaman sambutan dibaca dari atas
   if(loading){ col.append(el('div', 'text-sm text-mute', 'Memuat percakapan…')); }
   else if(!ms.length){ col.append(renderWelcome()); }
   else {
@@ -502,7 +568,7 @@ function render(){
       col.append(renderEntry(m, a, (a ? i + 1 : i) === ms.length - 1));
     });
   }
-  scrollDown();
+  if(scroll) scrollDown(); else if(!ms.length) stream.scrollTop = 0;
 }
 function scrollDown(){ stream.scrollTop = stream.scrollHeight; }
 
@@ -581,6 +647,24 @@ async function retry(){
   render();
 }
 
+/* ---------- Dialog ---------- */
+// Konfirmasi dengan dialog sendiri (bukan confirm() bawaan browser). Mengembalikan Promise<boolean>.
+function confirmBox(title, text){
+  const d = $('confirm');
+  $('confirmTitle').textContent = title;
+  $('confirmText').textContent = text;
+  return new Promise(resolve => {
+    const done = v => { d.onclose = null; $('confirmOk').onclick = null; d.close(); resolve(v); };
+    $('confirmOk').onclick = () => done(true);
+    d.onclose = () => resolve(false);
+    d.showModal();
+  });
+}
+document.querySelectorAll('dialog').forEach(d => {
+  d.querySelectorAll('[data-close]').forEach(b => b.addEventListener('click', () => d.close()));
+  d.addEventListener('click', e => { if(e.target === d) d.close(); });
+});
+
 function autosize(){
   input.style.height = 'auto';
   input.style.height = Math.min(input.scrollHeight, 160) + 'px';
@@ -588,38 +672,26 @@ function autosize(){
 function openMenu(){ $('side').classList.remove('-translate-x-full'); $('scrim').classList.remove('hidden'); }
 function closeMenu(){ $('side').classList.add('-translate-x-full'); $('scrim').classList.add('hidden'); }
 
-function openFaq(){
-  const b = $('mBody');
-  b.innerHTML = '';
-  FAQ.forEach(([q, a]) => {
-    const d = el('details', 'group border-b border-line py-2 last:border-0');
-    const s = el('summary', 'flex cursor-pointer items-center justify-between gap-3 py-1.5 font-serif text-lg font-semibold');
-    s.append(el('span', '', q), ic('chevron', 'block size-4 shrink-0 text-mute transition-transform group-open:rotate-90'));
-    d.append(s, el('p', 'pb-2 text-mute', a));
-    b.append(d);
-  });
-  $('modal').classList.remove('hidden');
-  $('modal').classList.add('grid');
-  closeMenu();
-}
-function hideModal(){ $('modal').classList.add('hidden'); $('modal').classList.remove('grid'); }
+CHIPS.forEach(([label, question]) => {
+  const b = el('button', 'cursor-pointer rounded-full bg-tint px-2.5 py-1 text-xs font-medium text-brand transition hover:bg-brand hover:text-paper', label);
+  b.type = 'button';
+  b.onclick = () => { input.value = question; autosize(); input.focus(); };
+  $('chips').append(b);
+});
 
-document.querySelectorAll('[data-icon]').forEach(n => n.innerHTML = svg(n.dataset.icon));
 $('btnSend').onclick = () => send(input.value);
 $('btnNew').onclick = newChat;
 if($('btnClear')) $('btnClear').onclick = clearAll;
-$('btnFaq').onclick = openFaq;
+if($('histSearch')) $('histSearch').addEventListener('input', e => { histQuery = e.target.value; renderHist(); });
+$('btnFaq').onclick = () => { closeMenu(); $('faq').showModal(); };
 $('btnMenu').onclick = openMenu;
 $('scrim').onclick = closeMenu;
-$('mClose').onclick = hideModal;
-$('modal').addEventListener('click', e => { if(e.target === $('modal')) hideModal(); });
-document.addEventListener('keydown', e => { if(e.key === 'Escape') hideModal(); });
 input.addEventListener('input', autosize);
 input.addEventListener('keydown', e => {
   if(e.key === 'Enter' && !e.shiftKey && !e.isComposing){ e.preventDefault(); send(input.value); }
 });
 
-/* Resize sidebar */
+/* Ubah lebar sidebar */
 const SIDE_KEY = 'llm-surabaya-side-w', SIDE_MIN = 240, SIDE_MAX = 520, SIDE_DEF = 304;
 const rz = $('resizer');
 let curW = SIDE_DEF;
@@ -651,7 +723,6 @@ rz.addEventListener('pointerdown', e => {
 });
 rz.addEventListener('dblclick', () => { curW = setSide(SIDE_DEF); saveSide(); });
 
-renderContact();
 render();
 (async () => {
   if(!LOGGED_IN) return;
