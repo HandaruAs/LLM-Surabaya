@@ -43,22 +43,45 @@ class DocumentController extends Controller
             throw ValidationException::withMessages(['document' => 'Dokumen gagal disimpan.']);
         }
 
-        try {
-            DB::table('admin_documents')->insert([
-                'original_name' => $originalName,
+        // Cek apakah dokumen dengan nama yang sama sudah ada
+        $existingDoc = DB::table('admin_documents')->where('original_name', $originalName)->first();
+        
+        if ($existingDoc !== null) {
+            // Dokumen lama ada, hapus chunks dan file lama
+            try {
+                $indexer->delete($existingDoc->id);
+            } catch (Throwable $exception) {
+                Log::warning('Penghapusan indeks dokumen lama gagal', ['document_id' => $existingDoc->id, 'error' => $exception->getMessage()]);
+            }
+            Storage::disk(config('filesystems.default'))->delete($existingDoc->stored_path);
+            
+            // Update dokumen lama dengan file baru
+            $documentId = $existingDoc->id;
+            DB::table('admin_documents')->where('id', $documentId)->update([
                 'stored_path' => $storedPath,
                 'mime_type' => (string) $file->getMimeType(),
                 'size_bytes' => (int) $file->getSize(),
                 'status' => 'pending',
-                'created_at' => now(),
                 'updated_at' => now(),
             ]);
-        } catch (Throwable $exception) {
-            Storage::disk(config('filesystems.default'))->delete($storedPath);
-            throw $exception;
+        } else {
+            // Dokumen baru
+            try {
+                DB::table('admin_documents')->insert([
+                    'original_name' => $originalName,
+                    'stored_path' => $storedPath,
+                    'mime_type' => (string) $file->getMimeType(),
+                    'size_bytes' => (int) $file->getSize(),
+                    'status' => 'pending',
+                    'created_at' => now(),
+                    'updated_at' => now(),
+                ]);
+            } catch (Throwable $exception) {
+                Storage::disk(config('filesystems.default'))->delete($storedPath);
+                throw $exception;
+            }
+            $documentId = (int) DB::table('admin_documents')->where('stored_path', $storedPath)->value('id');
         }
-
-        $documentId = (int) DB::table('admin_documents')->where('stored_path', $storedPath)->value('id');
 
         try {
             $chunks = $indexer->index($documentId, $storedPath, $originalName);
