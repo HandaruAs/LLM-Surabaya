@@ -21,9 +21,10 @@ class AdminUserSeeder extends Seeder
             );
         }
 
-        User::updateOrCreate(
-            ['email' => $email],
-            ['name' => $name, 'password' => Hash::make($password)]
-        );
+        $admin = User::firstOrNew(['email' => $email]);
+        $admin->name = $name;
+        $admin->password = Hash::make($password);
+        $admin->role = User::ROLE_ADMIN; // role tidak fillable, jadi diisi langsung
+        $admin->save();
     }
 }

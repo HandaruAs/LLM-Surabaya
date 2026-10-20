@@ -16,8 +16,9 @@ return [
 
     // Batas kirim pesan per menit (FR-16).
     'rate_limit' => [
-        'per_visitor' => (int) env('CHAT_RATE_PER_VISITOR', 10),
-        'per_ip' => (int) env('CHAT_RATE_PER_IP', 30),
+        'per_user' => (int) env('CHAT_RATE_PER_USER', 10),  // user yang login, per akun
+        'per_guest' => (int) env('CHAT_RATE_PER_GUEST', 10), // tamu, per IP
+        'per_ip' => (int) env('CHAT_RATE_PER_IP', 30),       // total per IP (tamu + user)
     ],
 
 ];

@@ -8,6 +8,11 @@ class SendMessageRequest extends FormRequest
 {
     public const MAX_LENGTH = 1000;
 
+    /** Batas riwayat yang boleh dikirim tamu dari browser. */
+    public const MAX_HISTORY_ITEMS = 20;
+
+    public const MAX_HISTORY_CONTENT = 8000;
+
     public function authorize(): bool
     {
         return true;
@@ -19,6 +24,13 @@ class SendMessageRequest extends FormRequest
         return [
             'session_id' => ['nullable', 'integer', 'min:1'],
             'message' => ['required', 'string', 'max:'.self::MAX_LENGTH],
+
+            // Hanya dipakai tamu: riwayat obrolan yang dipegang browser.
+            // User yang login mengambil riwayat dari database, jadi field ini diabaikan.
+            'history' => ['nullable', 'array', 'max:'.self::MAX_HISTORY_ITEMS],
+            'history.*' => ['array:role,content'],
+            'history.*.role' => ['required', 'string', 'in:user,assistant'],
+            'history.*.content' => ['required', 'string', 'max:'.self::MAX_HISTORY_CONTENT],
         ];
     }
 
@@ -30,6 +42,11 @@ class SendMessageRequest extends FormRequest
             'message.required' => 'Pesan tidak boleh kosong.',
             'message.string' => 'Pesan harus berupa teks.',
             'message.max' => 'Pesan maksimal :max karakter.',
+            'history.array' => 'Riwayat tidak valid.',
+            'history.max' => 'Riwayat terlalu panjang.',
+            'history.*.array' => 'Riwayat tidak valid.',
+            'history.*.role.*' => 'Riwayat tidak valid.',
+            'history.*.content.*' => 'Riwayat tidak valid.',
         ];
     }
 }
