@@ -4,6 +4,8 @@ namespace App\Services;
 
 use App\Models\ChatMessage;
 use App\Models\ChatSession;
+use App\Models\User;
+use App\Services\Rag\RagAnswer;
 use App\Services\Rag\RagClient;
 use App\Services\Rag\RagUnavailableException;
 use Illuminate\Support\Facades\DB;
@@ -25,11 +27,10 @@ class ChatService
      *
      * @throws ChatFailedException
      */
-    public function send(string $visitorId, ?ChatSession $session, string $message): array
+    public function send(User $user, ?ChatSession $session, string $message): array
     {
-        [$session, $userMessage] = DB::transaction(function () use ($visitorId, $session, $message) {
-            $session ??= ChatSession::create([
-                'visitor_id' => $visitorId,
+        [$session, $userMessage] = DB::transaction(function () use ($user, $session, $message) {
+            $session ??= $user->chatSessions()->create([
                 'title' => ChatSession::titleFrom($message),
             ]);
 
@@ -42,6 +43,26 @@ class ChatService
         });
 
         return $this->answer($session, $userMessage);
+    }
+
+    /**
+     * Chat untuk TAMU (belum login): tidak ada yang disimpan ke database.
+     * Riwayat percakapan dipegang browser dan dikirim bersama pertanyaan,
+     * di sini hanya dipotong ke N pesan terakhir lalu diteruskan ke RAG.
+     *
+     * @param  array<int, array{role: string, content: string}>  $history
+     *
+     * @throws RagUnavailableException
+     */
+    public function askAsGuest(string $message, array $history): RagAnswer
+    {
+        $history = array_values(array_map(
+            fn (array $m) => ['role' => $m['role'], 'content' => $m['content']],
+            $history,
+        ));
+        $history = $this->historyLimit > 0 ? array_slice($history, -$this->historyLimit) : [];
+
+        return $this->rag->ask($message, $history);
     }
 
     /**

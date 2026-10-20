@@ -24,6 +24,7 @@ class AdminUserSeederTest extends TestCase
         $admin = User::where('email', 'admin-test@example.test')->firstOrFail();
 
         $this->assertSame('Admin Uji', $admin->name);
+        $this->assertTrue($admin->isAdmin());
         $this->assertTrue(Hash::check('TestPassword-OnlyForTest!', $admin->password));
 
         config(['admin.name' => 'Admin Diperbarui']);

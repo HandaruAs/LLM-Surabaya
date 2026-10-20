@@ -24,7 +24,7 @@ class AdminDocumentManagementTest extends TestCase
 
     public function test_admin_can_view_document_management_page(): void
     {
-        $this->actingAs(User::factory()->create())
+        $this->actingAs(User::factory()->admin()->create())
             ->get('/admin/documents')
             ->assertOk()
             ->assertSee('Manajemen dokumen');
@@ -34,12 +34,12 @@ class AdminDocumentManagementTest extends TestCase
     {
         $this->post('/admin/documents', [
             'document' => UploadedFile::fake()->create('laporan.pdf', 10, 'application/pdf'),
-        ])->assertRedirect('/admin/login');
+        ])->assertRedirect('/login');
     }
 
     public function test_admin_can_upload_pdf_and_it_is_listed_as_indexed(): void
     {
-        $this->actingAs(User::factory()->create())
+        $this->actingAs(User::factory()->admin()->create())
             ->post('/admin/documents', [
                 'document' => UploadedFile::fake()->create('laporan.pdf', 10, 'application/pdf'),
             ])
@@ -52,7 +52,7 @@ class AdminDocumentManagementTest extends TestCase
         $storedPath = \Illuminate\Support\Facades\DB::table('admin_documents')->where('original_name', 'laporan.pdf')->value('stored_path');
         Storage::disk('local')->assertExists($storedPath);
 
-        $this->actingAs(User::factory()->create())
+        $this->actingAs(User::factory()->admin()->create())
             ->get('/admin/documents')
             ->assertOk()
             ->assertSee('laporan.pdf')
@@ -61,7 +61,7 @@ class AdminDocumentManagementTest extends TestCase
 
     public function test_admin_can_upload_xlsx_file(): void
     {
-        $this->actingAs(User::factory()->create())
+        $this->actingAs(User::factory()->admin()->create())
             ->post('/admin/documents', [
                 'document' => UploadedFile::fake()->create(
                     'laporan.xlsx', 10,
@@ -75,7 +75,7 @@ class AdminDocumentManagementTest extends TestCase
 
     public function test_admin_cannot_upload_unsupported_document_format(): void
     {
-        $this->actingAs(User::factory()->create())
+        $this->actingAs(User::factory()->admin()->create())
             ->from('/admin/documents')
             ->post('/admin/documents', [
                 'document' => UploadedFile::fake()->create('malware.exe', 10, 'application/octet-stream'),
@@ -87,14 +87,14 @@ class AdminDocumentManagementTest extends TestCase
 
     public function test_admin_can_delete_an_uploaded_document(): void
     {
-        $this->actingAs(User::factory()->create())
+        $this->actingAs(User::factory()->admin()->create())
             ->post('/admin/documents', [
                 'document' => UploadedFile::fake()->create('hapus.pdf', 10, 'application/pdf'),
             ]);
 
         $documentId = \Illuminate\Support\Facades\DB::table('admin_documents')->value('id');
 
-        $this->actingAs(User::factory()->create())
+        $this->actingAs(User::factory()->admin()->create())
             ->delete('/admin/documents/'.$documentId)
             ->assertRedirect('/admin/documents');
 

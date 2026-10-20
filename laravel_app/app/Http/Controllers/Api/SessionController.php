@@ -12,10 +12,10 @@ use Illuminate\Http\Response;
 
 class SessionController extends Controller
 {
-    /** GET /api/sessions — sesi milik pengunjung, terbaru dulu (FR-12). */
+    /** GET /api/sessions — sesi milik user yang login, terbaru dulu (FR-12). */
     public function index(Request $request): JsonResponse
     {
-        $sessions = ChatSession::ownedBy($this->visitor($request))
+        $sessions = ChatSession::ownedBy($request->user())
             ->orderByDesc('updated_at')
             ->get(['id', 'title', 'updated_at'])
             ->map(fn (ChatSession $s) => $this->sessionToApi($s));
@@ -56,22 +56,17 @@ class SessionController extends Controller
         return response()->noContent();
     }
 
-    /** DELETE /api/sessions — tombol "Hapus semua": hapus seluruh sesi milik pengunjung ini. */
+    /** DELETE /api/sessions — tombol "Hapus semua": hapus seluruh sesi milik user ini. */
     public function destroyAll(Request $request): Response
     {
-        ChatSession::ownedBy($this->visitor($request))->delete(); // cascade ke pesan & sumber
+        ChatSession::ownedBy($request->user())->delete(); // cascade ke pesan & sumber
 
         return response()->noContent();
     }
 
-    private function visitor(Request $request): string
-    {
-        return $request->attributes->get('visitor_id');
-    }
-
     private function findOwned(Request $request, int $id): ChatSession
     {
-        return ChatSession::ownedBy($this->visitor($request))->findOrFail($id);
+        return ChatSession::ownedBy($request->user())->findOrFail($id);
     }
 
     private function sessionToApi(ChatSession $session): array

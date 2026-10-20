@@ -3,16 +3,19 @@
 use App\Http\Controllers\Api\ChatController;
 use App\Http\Controllers\Api\HealthController;
 use App\Http\Controllers\Api\SessionController;
-use App\Http\Middleware\EnsureVisitorId;
 use Illuminate\Support\Facades\Route;
 
 // Semua route di sini otomatis berprefix /api (lihat bootstrap/app.php).
+// Route /api/* mengenali user dari JWT di cookie (guard 'jwt'), dan karena
+// memakai cookie, POST/PATCH/DELETE wajib membawa header X-CSRF-TOKEN.
 
 Route::get('/health', HealthController::class);
 
-Route::middleware(EnsureVisitorId::class)->group(function () {
-    Route::post('/chat', [ChatController::class, 'store'])->middleware('throttle:chat');
+// Tamu boleh bertanya (tidak disimpan); user login otomatis tersimpan ke riwayat.
+Route::post('/chat', [ChatController::class, 'store'])->middleware('throttle:chat');
 
+// Riwayat hanya untuk user yang login. Tamu -> 401.
+Route::middleware('auth:jwt')->group(function () {
     Route::get('/sessions', [SessionController::class, 'index']);
     Route::delete('/sessions', [SessionController::class, 'destroyAll']);
 

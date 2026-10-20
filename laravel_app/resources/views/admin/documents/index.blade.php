@@ -54,7 +54,7 @@
                                 <p class="break-all font-medium">{{ $document->original_name }}</p>
                                 <p class="mt-1 text-xs text-mute">{{ strtoupper(pathinfo($document->original_name, PATHINFO_EXTENSION)) }} · {{ number_format($document->size_bytes / 1024, 1) }} KB · {{ $document->status_label }}</p>
                             </div>
-                            <form method="POST" action="{{ route('admin.documents.destroy', $document->id) }}" onsubmit="return confirm('Hapus dokumen {{ addslashes($document->original_name) }}?')">
+                            <form method="POST" action="{{ route('admin.documents.destroy', $document->id) }}" data-confirm="Hapus dokumen {{ $document->original_name }}?">
                                 @csrf
                                 @method('DELETE')
                                 <button type="submit" class="rounded-lg border border-red-200 px-3 py-2 text-sm text-red-700 hover:bg-red-50">Hapus</button>
@@ -65,5 +65,11 @@
             @endif
         </section>
     </main>
+    {{-- Konfirmasi hapus. Bukan atribut onsubmit karena CSP memblokir handler inline. --}}
+    <script nonce="{{ Vite::cspNonce() }}">
+        document.querySelectorAll('form[data-confirm]').forEach(form => {
+            form.addEventListener('submit', e => { if (!confirm(form.dataset.confirm)) e.preventDefault(); });
+        });
+    </script>
 </body>
 </html>

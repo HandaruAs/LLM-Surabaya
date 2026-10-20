@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
+use App\Models\User;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
@@ -21,6 +22,10 @@ class AuthController extends Controller
             'email' => ['required', 'email'],
             'password' => ['required', 'string'],
         ]);
+
+        // Hanya akun admin yang bisa login di sini. User biasa ditolak dengan
+        // pesan yang sama, supaya halaman ini tidak membocorkan email mana yang terdaftar.
+        $credentials['role'] = User::ROLE_ADMIN;
 
         if (! Auth::attempt($credentials)) {
             return back()->withErrors(['email' => 'Email atau kata sandi salah.'])->onlyInput('email');
