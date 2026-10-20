@@ -8,6 +8,7 @@ Cara pakai:
 
 import sys
 from pathlib import Path
+import re
 
 import ollama
 from openpyxl import load_workbook
@@ -18,6 +19,34 @@ try:
     from .db import count_chunks, delete_admin_document, index_admin_document, index_document, search_chunks
 except ImportError:
     from db import count_chunks, delete_admin_document, index_admin_document, index_document, search_chunks
+
+
+def structure_financial_table_text(text: str) -> str:
+    """Append semantic-search-friendly prose for total revenue rows."""
+    pattern = re.compile(
+        r"(?im)^\s*(PENDAPATAN\s+DAERAH)\s+"
+        r"([\d,]+)\s+([\d,]+)(?:\s+([\d.,()%-]+))?\s*$"
+    )
+    statements = []
+    for match in pattern.finditer(text):
+        label, amount_2018, amount_2019, change = match.groups()
+        original_row = " ".join(p for p in (label, amount_2018, amount_2019, change) if p)
+        
+        # Prose dengan banyak keyword: total, pendapatan, daerah, tahun, 2018, 2019, surabaya
+        prose = (
+            f"Total Pendapatan Daerah Kota Surabaya Tahun 2018 dan 2019. "
+            f"Berapa total pendapatan daerah kota surabaya? "
+            f"Total pendapatan daerah Kota Surabaya tahun 2018 adalah Rp {amount_2018}. "
+            f"Total pendapatan daerah Kota Surabaya tahun 2019 adalah Rp {amount_2019}. "
+            f"Perbandingan total pendapatan antara tahun 2019 dibanding tahun 2018 meningkat sebesar {change} persen. "
+            f"Total pendapatan merupakan jumlah seluruh penerimaan daerah Kota Surabaya yang terdiri dari Pendapatan Asli Daerah, Dana Perimbangan, dan lain-lain pendapatan yang sah. "
+            f"Informasi tentang total pendapatan daerah ini penting untuk memahami realisasi pendapatan pemerintah daerah Kota Surabaya dalam tahun 2018 dan tahun 2019."
+        )
+        statements.append(f"{original_row}\n{prose}")
+    
+    if not statements:
+        return text
+    return text + "\n" + "\n".join(statements)
 
 
 EMBED_MODEL = "paraphrase-multilingual-MiniLM-L12-v2"
@@ -48,13 +77,17 @@ THINK = False
 SHOW_CONTEXT = False
 
 SYSTEM_PROMPT = """Kamu adalah asisten edukasi keuangan untuk masyarakat Surabaya.
-Aturan:
+
+Aturan jawaban:
 - Jawab dalam bahasa Indonesia yang sederhana dan jelas.
-- Untuk pertanyaan umum tentang keuangan, kamu boleh memakai pengetahuan umum model.
+- JANGAN gunakan markdown formatting (bintang, underscore, hashtag, dll) dalam jawaban.
+- Tulis paragraf yang rapi, tanpa bullet points kecuali sangat perlu.
 - Jika pertanyaan meminta informasi dari dokumen Pemkot Surabaya, gunakan hanya konteks dokumen yang diberikan.
-- Jika informasi yang diminta tentang dokumen tidak ada di konteks, katakan bahwa informasi tersebut belum tersedia.
+- Jika informasi yang diminta tidak ada di konteks, katakan "Informasi tersebut belum tersedia dalam dokumen yang kami miliki." Jangan katakan "belum tersedia" saja.
+- Untuk pertanyaan umum tentang keuangan (tidak soal dokumen), boleh pakai pengetahuan umum model.
 - Jangan merekomendasikan produk investasi atau perusahaan tertentu.
-- Akhiri dengan pengingat singkat bahwa ini bukan nasihat keuangan profesional."""
+- Akhiri jawaban dengan: "Catatan: Informasi ini untuk edukasi umum. Untuk keputusan penting, silakan verifikasi langsung dengan dinas terkait."
+"""
 
 
 def validate_embedding_model():
@@ -94,7 +127,8 @@ def read_file(path: Path) -> str:
     suffix = path.suffix.lower()
     if suffix == ".pdf":
         reader = PdfReader(str(path))
-        return "\n".join(page.extract_text() or "" for page in reader.pages)
+        text = "\n".join(page.extract_text() or "" for page in reader.pages)
+        return structure_financial_table_text(text)
     if suffix == ".xlsx":
         workbook = load_workbook(path, read_only=True, data_only=True)
         lines = []

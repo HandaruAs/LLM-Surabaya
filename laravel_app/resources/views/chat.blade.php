@@ -26,7 +26,7 @@
       <i data-icon="newchat" class="block size-5"></i>Obrolan baru
     </button>
 
-    @auth
+    @auth('jwt')
     <div class="flex min-h-[7rem] flex-1 flex-col gap-1">
       <div class="flex items-center justify-between px-1 text-xs text-mute">
         <span>Riwayat</span>
@@ -59,11 +59,11 @@
         <i data-icon="chevron" class="block size-4 text-mute"></i>
       </button>
       <div id="contact" class="mt-3 rounded-xl bg-tint p-3"></div>
-      @auth
+      @auth('jwt')
       <div class="mt-3 flex items-center justify-between gap-2 px-1">
         <div class="min-w-0">
-          <div class="truncate text-sm font-medium">{{ auth()->user()->name }}</div>
-          <div class="truncate text-xs text-mute">{{ auth()->user()->email }}</div>
+          <div class="truncate text-sm font-medium">{{ auth('jwt')->user()->name }}</div>
+          <div class="truncate text-xs text-mute">{{ auth('jwt')->user()->email }}</div>
         </div>
         <form method="POST" action="{{ route('logout') }}">
           @csrf
@@ -121,7 +121,8 @@ const CSRF = document.querySelector('meta[name="csrf-token"]').content;
 
 // Login memakai session (cookie). Tamu boleh bertanya, tapi riwayatnya tidak disimpan:
 // percakapan tamu hanya ada di memori halaman ini dan dikirim ulang sebagai "history".
-const LOGGED_IN = @json(auth()->check());
+const LOGGED_IN = @json(auth('jwt')->check());
+const USER_NAME = @json(auth('jwt')->user()?->name);
 
 // Panggil API. Selalu mengembalikan { ok, status, data } — status 0 berarti server tidak bisa dihubungi.
 async function api(path, method = 'GET', body){
@@ -174,12 +175,7 @@ const P = {
   wallet: '<path d="M19 7V4a1 1 0 0 0-1-1H5a2 2 0 0 0 0 4h15a1 1 0 0 1 1 1v4h-3a2 2 0 0 0 0 4h3a1 1 0 0 0 1-1v-2a1 1 0 0 0-1-1"/><path d="M3 5v14a2 2 0 0 0 2 2h15a1 1 0 0 0 1-1v-4"/>'
 };
 
-const TOPICS = [
-  { icon: 'home', title: 'Pajak Bumi dan Bangunan', q: 'Bagaimana cara menghitung dan membayar PBB-P2 untuk rumah tinggal?' },
-  { icon: 'pie', title: 'Anggaran dan belanja daerah', q: 'Dari mana saja sumber pendapatan dalam APBD Kota Surabaya?' },
-  { icon: 'receipt', title: 'Pajak dan retribusi daerah', q: 'Apa perbedaan pajak daerah dan retribusi daerah?' },
-  { icon: 'wallet', title: 'Perolehan hak atas tanah', q: 'Bagaimana BPHTB dihitung pada transaksi jual beli tanah?' }
-];
+const TOPICS = [];
 
 const FAQ = [
   ['Apa perbedaan pajak daerah dan retribusi daerah?', 'Pajak daerah adalah pungutan wajib kepada daerah oleh orang pribadi atau badan tanpa imbalan langsung, dan hasilnya dipakai untuk kepentingan daerah. Retribusi dibayar atas jasa atau perizinan tertentu yang disediakan pemerintah daerah, sehingga pembayarnya menerima imbalan langsung.'],
@@ -261,7 +257,8 @@ function dayLabel(iso){
 }
 function greet(){
   const h = new Date().getHours();
-  return h < 11 ? 'Selamat pagi' : h < 15 ? 'Selamat siang' : h < 18 ? 'Selamat sore' : 'Selamat malam';
+  const timeGreet = h < 11 ? 'Selamat pagi' : h < 15 ? 'Selamat siang' : h < 18 ? 'Selamat sore' : 'Selamat malam';
+  return USER_NAME ? `${timeGreet} ${USER_NAME}` : timeGreet;
 }
 
 // Judul di header: maksimal 40 karakter. Kalau batasnya jatuh di tengah kata,
@@ -468,7 +465,7 @@ function renderWelcome(){
   const w = el('div', 'mx-auto mt-[2vh] w-full max-w-3xl');
   const date = new Date().toLocaleDateString('id-ID', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
   w.append(el('div', 'text-sm text-mute', date));
-  w.append(el('h2', 'mt-2 font-serif text-3xl leading-tight font-semibold md:text-4xl', greet() + '. Apa yang ingin Anda ketahui tentang keuangan daerah?'));
+  w.append(el('h2', 'mt-2 font-serif text-3xl leading-tight font-semibold md:text-4xl', greet() + '. Apa yang ingin Anda ketahui?'));
   w.append(el('div', 'my-5 h-[3px] w-14 bg-gold'));
   w.append(el('p', 'mb-8 max-w-[60ch] text-mute', 'Tanyakan seputar pajak daerah, anggaran, dan retribusi Kota Surabaya. Jawaban dilengkapi rujukan agar mudah ditelusuri.'));
   const list = el('div', 'divide-y divide-line border-y border-line');
