@@ -5,6 +5,7 @@ namespace Tests\Feature;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\UploadedFile;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Storage;
 use Tests\TestCase;
@@ -27,7 +28,7 @@ class AdminDocumentManagementTest extends TestCase
         $this->actingAs(User::factory()->admin()->create())
             ->get('/admin/documents')
             ->assertOk()
-            ->assertSee('Manajemen dokumen');
+            ->assertSee('Kelola dokumen');
     }
 
     public function test_guest_cannot_upload_documents(): void
@@ -49,7 +50,7 @@ class AdminDocumentManagementTest extends TestCase
             'original_name' => 'laporan.pdf',
             'status' => 'indexed',
         ]);
-        $storedPath = \Illuminate\Support\Facades\DB::table('admin_documents')->where('original_name', 'laporan.pdf')->value('stored_path');
+        $storedPath = DB::table('admin_documents')->where('original_name', 'laporan.pdf')->value('stored_path');
         Storage::disk('local')->assertExists($storedPath);
 
         $this->actingAs(User::factory()->admin()->create())
@@ -92,7 +93,7 @@ class AdminDocumentManagementTest extends TestCase
                 'document' => UploadedFile::fake()->create('hapus.pdf', 10, 'application/pdf'),
             ]);
 
-        $documentId = \Illuminate\Support\Facades\DB::table('admin_documents')->value('id');
+        $documentId = DB::table('admin_documents')->value('id');
 
         $this->actingAs(User::factory()->admin()->create())
             ->delete('/admin/documents/'.$documentId)

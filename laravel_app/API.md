@@ -38,6 +38,16 @@ DB_DATABASE=llm_surabaya_test php artisan test
 
 ## Tampilan
 
+Mengikuti desain `LLM-Surabaya-UI` (Tailwind v4, token warna di `resources/css/app.css`,
+mode gelap otomatis mengikuti sistem). Ikon ada di `App\Support\Icons` (`<x-icon name="..." />`).
+
+| Halaman | View |
+|---|---|
+| Chat (tamu & user) | `chat.blade.php` |
+| Login / daftar | `auth/login.blade.php`, `auth/register.blade.php` (layout `auth/layout.blade.php`) |
+| Admin: hanya Kelola dokumen (`/admin` diarahkan ke sini) | `admin/documents/index.blade.php` (layout `admin/layout.blade.php`) |
+
+
 `resources/views/chat.blade.php` (tim frontend) memanggil API ini lewat fungsi `api()` di dalam
 `<script>`. Riwayat chat user yang login disimpan di PostgreSQL. `localStorage` hanya menyimpan
 tanda suka/tidak suka dan lebar sidebar. Setelah mengubah tampilan, jalankan `npm run build`

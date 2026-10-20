@@ -1,41 +1,56 @@
 <!DOCTYPE html>
 <html lang="id" class="h-full">
 <head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<title>@yield('title') - {{ config('app.name', 'LLM Surabaya') }}</title>
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;700&family=Source+Serif+4:wght@400;600&display=swap" rel="stylesheet">
-@vite(['resources/css/app.css', 'resources/js/app.js'])
+@include('partials.head', ['title' => trim($__env->yieldContent('title'))])
 </head>
 <body class="min-h-full bg-paper font-sans text-ink">
-<main class="mx-auto flex min-h-dvh w-full max-w-md flex-col justify-center px-4 py-10">
-  <a href="{{ route('chat') }}" class="mb-8 flex items-center gap-3 self-start">
-    <span class="grid size-10 place-items-center rounded-xl bg-brand text-paper">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" class="size-5"><line x1="3" x2="21" y1="22" y2="22"/><line x1="6" x2="6" y1="18" y2="11"/><line x1="10" x2="10" y1="18" y2="11"/><line x1="14" x2="14" y1="18" y2="11"/><line x1="18" x2="18" y1="18" y2="11"/><polygon points="12 2 20 7 4 7"/></svg>
-    </span>
-    <span>
-      <span class="block font-serif text-lg leading-tight font-semibold">LLM Surabaya</span>
-      <span class="block text-xs text-mute">Informasi keuangan daerah</span>
-    </span>
-  </a>
+<div class="grid min-h-dvh lg:grid-cols-2">
 
-  <div class="rounded-2xl border border-line bg-card p-6 shadow-sm sm:p-8">
-    <h1 class="font-serif text-2xl font-semibold">@yield('heading')</h1>
-    <p class="mt-1.5 text-sm text-mute">@yield('subheading')</p>
-    <div class="mt-4 mb-6 h-[3px] w-12 bg-gold"></div>
+  {{-- Panel biru (disembunyikan di layar kecil) --}}
+  <div class="relative hidden flex-col justify-between overflow-hidden bg-brand p-10 text-paper lg:flex">
+    <svg class="pointer-events-none absolute -right-10 -top-6 h-80 w-80 text-paper opacity-10" viewBox="0 0 230 230" aria-hidden="true"><polygon points="115 6 224 56 6 56" fill="currentColor"/><rect x="34" y="70" width="18" height="110" rx="9" fill="currentColor"/><rect x="82" y="70" width="18" height="110" rx="9" fill="currentColor"/><rect x="130" y="70" width="18" height="110" rx="9" fill="currentColor"/><rect x="178" y="70" width="18" height="110" rx="9" fill="currentColor"/><rect x="22" y="194" width="186" height="16" rx="8" fill="currentColor"/></svg>
 
-    @if ($errors->any())
-      <div role="alert" class="mb-5 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-800 dark:bg-red-950 dark:text-red-300">
-        {{ $errors->first() }}
-      </div>
-    @endif
+    <a href="{{ route('chat') }}" class="relative flex items-center gap-3 self-start">
+      <span class="grid size-10 place-items-center rounded-xl bg-paper text-brand"><x-icon name="landmark" class="size-5" /></span>
+      <span class="font-serif text-lg font-semibold">LLM Surabaya</span>
+    </a>
 
-    @yield('form')
+    <div class="relative">
+      <div class="mb-4 h-[3px] w-14 rounded-full bg-gold"></div>
+      <h2 class="max-w-sm font-serif text-3xl font-semibold leading-tight">Tanya jawab keuangan daerah, lengkap dengan rujukan.</h2>
+      <p class="mt-3 max-w-sm text-sm leading-6 opacity-90">Tanyakan seputar pajak, anggaran, dan retribusi Kota Surabaya. Jawaban disusun dari dokumen resmi.</p>
+      <ul class="mt-6 space-y-2.5 text-sm">
+        <li class="flex items-center gap-2.5"><x-icon name="check" class="size-[18px]" />Jawaban selalu dengan rujukan dokumen</li>
+        <li class="flex items-center gap-2.5"><x-icon name="check" class="size-[18px]" />Riwayat percakapan tersimpan di akunmu</li>
+        <li class="flex items-center gap-2.5"><x-icon name="check" class="size-[18px]" />Tanpa akun pun tetap bisa bertanya</li>
+      </ul>
+    </div>
+
+    <p class="relative text-xs opacity-75">Dinas Komunikasi dan Informatika Kota Surabaya</p>
   </div>
 
-  <p class="mt-6 text-center text-sm text-mute">@yield('footer')</p>
-</main>
+  {{-- Form --}}
+  <div class="flex items-center justify-center px-4 py-10 sm:p-10">
+    <div class="w-full max-w-sm">
+      <a href="{{ route('chat') }}" class="mb-8 flex items-center gap-3 lg:hidden">
+        <span class="grid size-10 place-items-center rounded-xl bg-brand text-paper shadow-sm"><x-icon name="landmark" class="size-5" /></span>
+        <span class="font-serif text-lg font-semibold">LLM Surabaya</span>
+      </a>
+
+      <h1 class="font-serif text-3xl font-semibold">@yield('heading')</h1>
+      <p class="mt-2 text-sm text-mute">@yield('subheading')</p>
+
+      @yield('alert')
+
+      @yield('form')
+
+      <p class="mt-6 text-center text-sm text-mute">@yield('footer')</p>
+      <p class="mt-3 text-center text-sm">
+        <a href="{{ route('chat') }}" class="text-mute hover:text-ink hover:underline">Lanjut tanpa masuk</a>
+      </p>
+    </div>
+  </div>
+</div>
+@stack('scripts')
 </body>
 </html>

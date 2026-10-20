@@ -41,7 +41,8 @@ Route::prefix('admin')->name('admin.')->group(function () {
 
     // 'auth:web' = harus login admin (session), EnsureUserIsAdmin = harus ber-role admin (user biasa -> 403).
     Route::middleware(['auth:web', EnsureUserIsAdmin::class])->group(function () {
-        Route::view('/', 'admin.dashboard')->name('dashboard');
+        // Area admin hanya untuk kelola dokumen: /admin langsung ke halaman itu.
+        Route::get('/', fn () => redirect()->route('admin.documents.index'))->name('dashboard');
         Route::get('/documents', [DocumentController::class, 'index'])->name('documents.index');
         Route::post('/documents', [DocumentController::class, 'store'])->name('documents.store');
         Route::delete('/documents/{document}', [DocumentController::class, 'destroy'])
