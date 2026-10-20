@@ -2,55 +2,121 @@
 
 @source "../views/**/*.blade.php";
 
+/*
+ * Token warna desain LLM Surabaya (mengikuti file desain LLM-Surabaya-UI).
+ * Semua warna dipakai lewat kelas Tailwind: bg-paper, text-ink, bg-success-bg, dst.
+ * Mode gelap otomatis mengikuti pengaturan sistem.
+ */
 :root {
   color-scheme: light dark;
   --side-w: 19rem;
   --paper: #f3f5f9;
   --card: #ffffff;
+  --tint: #eaf0fc;
   --ink: #0e1f3a;
   --mute: #5a6a82;
   --line: #d8dfea;
   --brand: #1c4fd0;
-  --tint: #eaf0fc;
+  --brand-strong: #163fa8;
   --gold: #b8861b;
+  --danger-bg: #fef2f2;
+  --danger-ink: #991b1b;
+  --danger: #ef4444;
+  --success-bg: #f0fdf4;
+  --success-ink: #166534;
+  --warning-bg: #fffbeb;
+  --warning-ink: #78350f;
+  --scrim: rgba(0, 0, 0, 0.5);
 }
 
 @media (prefers-color-scheme: dark) {
   :root {
     --paper: #0a111f;
     --card: #101a2d;
+    --tint: #15244a;
     --ink: #e7edf8;
     --mute: #93a3bc;
     --line: #223048;
     --brand: #6e9bff;
-    --tint: #15244a;
+    --brand-strong: #9dbcff;
     --gold: #e2b24c;
+    --danger-bg: #450a0a;
+    --danger-ink: #fca5a5;
+    --success-bg: #052e16;
+    --success-ink: #86efac;
+    --warning-bg: #451a03;
+    --warning-ink: #fde68a;
   }
 }
 
 @theme inline {
   --font-sans: 'Plus Jakarta Sans', ui-sans-serif, system-ui, sans-serif;
   --font-serif: 'Source Serif 4', ui-serif, Georgia, serif;
+
   --color-paper: var(--paper);
   --color-card: var(--card);
+  --color-tint: var(--tint);
   --color-ink: var(--ink);
   --color-mute: var(--mute);
   --color-line: var(--line);
   --color-brand: var(--brand);
-  --color-tint: var(--tint);
+  --color-brand-strong: var(--brand-strong);
   --color-gold: var(--gold);
+  --color-danger-bg: var(--danger-bg);
+  --color-danger-ink: var(--danger-ink);
+  --color-danger: var(--danger);
+  --color-success-bg: var(--success-bg);
+  --color-success-ink: var(--success-ink);
+  --color-warning-bg: var(--warning-bg);
+  --color-warning-ink: var(--warning-ink);
+  --color-scrim: var(--scrim);
+
+  /* max-w-content, max-w-measure */
+  --container-content: 896px;
+  --container-measure: 68ch;
+
+  /* shadow-card, shadow-lift */
+  --shadow-card: 0 1px 2px rgba(14, 31, 58, 0.04), 0 4px 16px -4px rgba(14, 31, 58, 0.08);
+  --shadow-lift: 0 2px 4px rgba(14, 31, 58, 0.06), 0 12px 28px -8px rgba(14, 31, 58, 0.16);
+
+  /* animate-sweep: garis progres saat AI menyusun jawaban */
+  --animate-sweep: sweep 1.3s ease-in-out infinite;
+
+  @keyframes sweep {
+    0% { transform: translateX(-100%); }
+    100% { transform: translateX(300%); }
+  }
 }
 
-@keyframes sweep {
-  0% { transform: translateX(-100%); }
-  100% { transform: translateX(300%); }
+@media (prefers-reduced-motion: reduce) {
+  .animate-sweep, .animate-ping, .animate-pulse { animation: none; }
 }
-.sweep { animation: sweep 1.3s ease-in-out infinite; }
-@media (prefers-reduced-motion: reduce) { .sweep { animation: none; } }
 
 @layer base {
+  body { -webkit-font-smoothing: antialiased; }
+
   :focus-visible {
     outline: 2px solid var(--brand);
     outline-offset: 2px;
   }
+
+  /* Kolom isian seragam (pengganti plugin @tailwindcss/forms di file desain). */
+  .field {
+    display: block;
+    width: 100%;
+    border: 1px solid var(--line);
+    border-radius: 0.75rem;
+    background: var(--card);
+    padding: 0.625rem 0.875rem;
+    font-size: 0.875rem;
+    color: var(--ink);
+    box-shadow: 0 1px 2px 0 rgb(0 0 0 / 0.05);
+    transition: border-color .15s, box-shadow .15s;
+  }
+  .field::placeholder { color: var(--mute); }
+  .field:focus { outline: none; border-color: var(--brand); box-shadow: 0 0 0 2px var(--brand); }
+  .field[aria-invalid="true"] { border-color: var(--danger); }
+  .field[aria-invalid="true"]:focus { box-shadow: 0 0 0 2px var(--danger); }
+
+  dialog::backdrop { background: var(--scrim); }
 }
