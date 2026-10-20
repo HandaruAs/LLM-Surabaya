@@ -148,7 +148,6 @@ const P = {
   mail: '<rect width="20" height="16" x="2" y="4" rx="2"/><path d="m22 7-8.97 5.7a1.94 1.94 0 0 1-2.06 0L2 7"/>',
   pin: '<path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0Z"/><circle cx="12" cy="10" r="3"/>',
   chevron: '<path d="m9 18 6-6-6-6"/>',
-  follow: '<polyline points="15 10 20 15 15 20"/><path d="M4 4v7a4 4 0 0 0 4 4h12"/>',
   home: '<path d="M15 21v-8a1 1 0 0 0-1-1h-4a1 1 0 0 0-1 1v8"/><path d="M3 10a2 2 0 0 1 .709-1.528l7-5.999a2 2 0 0 1 2.582 0l7 5.999A2 2 0 0 1 21 10v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/>',
   pie: '<path d="M21 12c.552 0 1.005-.449.95-.998a10 10 0 0 0-8.953-8.951c-.55-.055-.998.398-.998.95v8a1 1 0 0 0 1 1z"/><path d="M21.21 15.89A10 10 0 1 1 8 2.83"/>',
   receipt: '<path d="M4 2v20l2-1 2 1 2-1 2 1 2-1 2 1 2-1 2 1V2l-2 1-2-1-2 1-2-1-2 1-2-1-2 1Z"/><path d="M16 8h-6a2 2 0 1 0 0 4h4a2 2 0 1 1 0 4H8"/><path d="M12 17.5v-11"/>',
@@ -161,8 +160,6 @@ const TOPICS = [
   { icon: 'receipt', title: 'Pajak dan retribusi daerah', q: 'Apa perbedaan pajak daerah dan retribusi daerah?' },
   { icon: 'wallet', title: 'Perolehan hak atas tanah', q: 'Bagaimana BPHTB dihitung pada transaksi jual beli tanah?' }
 ];
-
-const FOLLOW = ['Jelaskan dengan bahasa yang lebih sederhana', 'Apa dasar hukumnya?', 'Berikan contoh perhitungannya'];
 
 const FAQ = [
   ['Apa perbedaan pajak daerah dan retribusi daerah?', 'Pajak daerah adalah pungutan wajib kepada daerah oleh orang pribadi atau badan tanpa imbalan langsung, dan hasilnya dipakai untuk kepentingan daerah. Retribusi dibayar atas jasa atau perizinan tertentu yang disediakan pemerintah daerah, sehingga pembayarnya menerima imbalan langsung.'],
@@ -181,6 +178,36 @@ let draft = [];        // pesan obrolan baru sebelum server membuat sesinya
 const errors = {};     // id sesi -> pesan error untuk pertanyaan terakhir yang belum terjawab
 let busy = false;
 let loading = false;
+
+// Judul lengkap per sesi (pertanyaan pertama), disimpan di browser.
+// Judul dari server dipotong 40 karakter, jadi sidebar memakai yang ini.
+const TITLE_KEY = 'llm-surabaya-titles';
+let fullTitles = {};
+try { fullTitles = JSON.parse(localStorage.getItem(TITLE_KEY)) || {}; } catch(e){}
+function saveTitles(){ try { localStorage.setItem(TITLE_KEY, JSON.stringify(fullTitles)); } catch(e){} }
+function setFullTitle(id, text){
+  if(!text || fullTitles[id] === text) return;
+  fullTitles[id] = text;
+  saveTitles();
+}
+function titleOf(c){ return fullTitles[c.id] || c.title; }
+
+// Untuk riwayat yang judulnya terlihat terpotong, ambil pertanyaan pertamanya
+// sekali saja lalu simpan, jadi tidak ada request ulang di kunjungan berikutnya.
+let fillingTitles = false;
+async function fillTitles(){
+  if(fillingTitles) return;
+  fillingTitles = true;
+  try {
+    for(const s of sessions.slice()){
+      if(fullTitles[s.id] || !s.title || s.title.length < 36) continue;
+      const r = await api('/sessions/' + s.id + '/messages');
+      if(!r.ok) continue;
+      const first = (r.data.data || []).find(m => m.role === 'user');
+      if(first){ setFullTitle(s.id, first.content); renderHist(); }
+    }
+  } finally { fillingTitles = false; }
+}
 
 function el(tag, cls, text){
   const n = document.createElement(tag);
@@ -217,6 +244,19 @@ function greet(){
   return h < 11 ? 'Selamat pagi' : h < 15 ? 'Selamat siang' : h < 18 ? 'Selamat sore' : 'Selamat malam';
 }
 
+// Judul di header: maksimal 40 karakter. Kalau batasnya jatuh di tengah kata,
+// mundur ke kata sebelumnya, lalu tambahkan titik-titik.
+function shortTitle(text, max = 40){
+  text = (text || '').replace(/\s+/g, ' ').trim();
+  if(text.length <= max) return text;
+  let cut = text.slice(0, max);
+  if(text[max] !== ' '){
+    const i = cut.lastIndexOf(' ');
+    if(i > 0) cut = cut.slice(0, i);
+  }
+  return cut.replace(/[\s,.;:!?-]+$/, '') + '…';
+}
+
 function renderContact(){
   const box = $('contact');
   box.append(el('div', 'text-sm font-medium', 'Hubungi kami'));
@@ -240,8 +280,15 @@ function renderContact(){
 
 async function refreshSessions(){
   const r = await api('/sessions');
-  if(r.ok) sessions = r.data.data || [];
+  if(r.ok){
+    sessions = r.data.data || [];
+    // Buang judul tersimpan milik sesi yang sudah tidak ada.
+    const ids = new Set(sessions.map(s => String(s.id)));
+    Object.keys(fullTitles).forEach(k => { if(!ids.has(k)) delete fullTitles[k]; });
+    saveTitles();
+  }
   renderHist();
+  if(r.ok) fillTitles();
   return r.ok;
 }
 
@@ -249,6 +296,8 @@ async function refreshSessions(){
 function adopt(id, title){
   if(activeId === null){ msgs[id] = draft; draft = []; activeId = id; }
   sessions = [{ id, title: title || 'Obrolan baru', updated_at: new Date().toISOString() }, ...sessions.filter(s => s.id !== id)];
+  const firstQ = (msgs[id] || []).find(m => m.role === 'user');
+  if(firstQ && !fullTitles[id]) setFullTitle(id, firstQ.content);
 }
 
 function newChat(){ if(busy) return; activeId = null; draft = []; showFormErr(''); render(); closeMenu(); input.focus(); }
@@ -263,6 +312,8 @@ async function openChat(id){
     if(r.status === 404){ await refreshSessions(); activeId = null; render(); return; }
     if(!r.ok){ showFormErr(r.status === 0 ? MSG.offline : MSG.generic); render(); return; }
     msgs[id] = (r.data.data || []).map(fromApi);
+    const firstQ = msgs[id].find(m => m.role === 'user');
+    if(firstQ) setFullTitle(id, firstQ.content);
   }
   render();
 }
@@ -273,6 +324,7 @@ async function delChat(id){
   if(!r.ok && r.status !== 404){ alert(r.status === 0 ? MSG.offline : MSG.generic); return; }
   sessions = sessions.filter(s => s.id !== id);
   delete msgs[id]; delete errors[id];
+  delete fullTitles[id]; saveTitles();
   if(activeId === id) activeId = null;
   render();
 }
@@ -284,6 +336,7 @@ async function clearAll(){
   sessions = []; activeId = null; draft = [];
   Object.keys(msgs).forEach(k => delete msgs[k]);
   Object.keys(errors).forEach(k => delete errors[k]);
+  fullTitles = {}; saveTitles();
   render();
 }
 
@@ -295,7 +348,7 @@ function renderHist(){
     const row = el('div', 'group flex items-center rounded-lg border-l-[3px] ' + (on ? 'border-brand bg-tint' : 'border-transparent hover:bg-tint'));
     const open = el('button', 'min-w-0 flex-1 cursor-pointer bg-transparent px-2.5 py-2 text-left');
     open.type = 'button';
-    open.append(el('div', 'truncate text-sm font-medium', c.title), el('div', 'text-xs text-mute', dayLabel(c.updated_at)));
+    open.append(el('div', 'line-clamp-2 text-sm font-medium break-words', titleOf(c)), el('div', 'text-xs text-mute', dayLabel(c.updated_at)));
     open.onclick = () => openChat(c.id);
     const del = el('button', 'mr-1 cursor-pointer rounded-md p-1.5 text-mute hover:text-red-500 focus-visible:opacity-100 md:opacity-0 md:group-hover:opacity-100');
     del.type = 'button';
@@ -369,20 +422,6 @@ function renderEntry(q, a, last){
     acts.append(iconBtn('down', 'Kurang membantu', fb === 'down', () => { fbSet(a.id, fb === 'down' ? '' : 'down'); render(); }));
     body.append(acts);
   }
-
-  const followups = a.followups && a.followups.length ? a.followups : FOLLOW;
-  if(last && !a.error && !busy){
-    const f = el('div', 'mt-4 border-t border-line pt-3');
-    f.append(el('div', 'mb-1 text-sm text-mute', 'Lanjutkan dengan'));
-    followups.forEach(txt => {
-      const b = el('button', 'flex w-full cursor-pointer items-center gap-2 py-1.5 text-left text-brand hover:underline');
-      b.type = 'button';
-      b.append(ic('follow'), el('span', '', txt));
-      b.onclick = () => send(txt);
-      f.append(b);
-    });
-    body.append(f);
-  }
   e.append(body);
 
   const list = Array.isArray(a.sources) ? a.sources : (a.sources ? [a.sources] : []);
@@ -428,7 +467,9 @@ function render(){
   renderHist();
   const c = active();
   const ms = current();
-  $('title').textContent = c ? c.title : (ms.length ? ms[0].content.slice(0, 40) : 'Obrolan baru');
+  // Header: pertanyaan pertama yang utuh, dipotong 40 karakter di batas kata.
+  const first = ms.length && ms[0].role === 'user' ? ms[0].content : '';
+  $('title').textContent = first ? shortTitle(first) : (c ? shortTitle(titleOf(c)) : 'Obrolan baru');
   col.innerHTML = '';
   if(loading){ col.append(el('div', 'text-sm text-mute', 'Memuat percakapan…')); }
   else if(!ms.length){ col.append(renderWelcome()); }
