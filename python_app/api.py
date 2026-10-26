@@ -54,16 +54,40 @@ class ChatRequest(BaseModel):
     question: str = Field(min_length=1, max_length=2000)
     history: list[dict[str, Any]] = Field(default_factory=list, max_length=20)
     lang: str = Field(default="id", pattern="^(id|en)$")
+    system_prompt: str = Field(default="", max_length=5000)
+    top_k: int = Field(default=3, ge=1, le=10)
+    num_ctx: int = Field(default=512, ge=512, le=32768)
+    think: bool = False
+    show_context: bool = False
 
 
-def answer_question(question: str, history: list[dict[str, Any]]) -> dict[str, Any]:
+def answer_question(
+    question: str,
+    history: list[dict[str, Any]],
+    system_prompt: str = "",
+    top_k: int = 3,
+    num_ctx: int = 512,
+    think: bool = False,
+    show_context: bool = False,
+) -> dict[str, Any]:
+    del show_context  # Context remains internal; do not expose retrieved document text via public chat API.
     valid_history = [
         {"role": item["role"], "content": item["content"][:2000]}
         for item in history
         if item.get("role") in {"user", "assistant"}
         and isinstance(item.get("content"), str)
     ][-10:]
-    answer, sources = generate_answer(question, valid_history)
+    if system_prompt == "" and top_k == 3 and num_ctx == 512 and not think:
+        answer, sources = generate_answer(question, valid_history)
+    else:
+        answer, sources = generate_answer(
+            question,
+            valid_history,
+            system_prompt=system_prompt,
+            top_k=top_k,
+            num_ctx=num_ctx,
+            think=think,
+        )
     return {"answer": answer, "sources": sources}
 
 
@@ -107,7 +131,15 @@ def delete_document_endpoint(document_id: int) -> dict[str, str]:
 @app.post("/chat")
 def chat(request: ChatRequest) -> dict[str, Any]:
     try:
-        result = answer_question(request.question, request.history)
+        result = answer_question(
+            request.question,
+            request.history,
+            system_prompt=request.system_prompt,
+            top_k=request.top_k,
+            num_ctx=request.num_ctx,
+            think=request.think,
+            show_context=request.show_context,
+        )
     except Exception as exc:
         logger.exception("Pemrosesan pertanyaan gagal")
         raise HTTPException(status_code=503, detail="Pemrosesan pertanyaan gagal.") from exc

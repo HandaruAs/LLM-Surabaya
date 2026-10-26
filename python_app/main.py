@@ -72,7 +72,7 @@ CHUNK_WORDS = 90
 CHUNK_OVERLAP_WORDS = 15
 EMBED_BATCH_SIZE = 16
 TOP_K = 3
-NUM_CTX = 512
+NUM_CTX = 256
 THINK = False
 SHOW_CONTEXT = False
 
@@ -208,8 +208,15 @@ def index_documents():
 
 
 # ---------- Tahap 2: tanya-jawab ----------
-def generate_answer(question: str, history: list[dict] | None = None) -> tuple[str, list[dict]]:
-    records = search_chunks(embed_text(question), top_k=TOP_K)
+def generate_answer(
+    question: str,
+    history: list[dict] | None = None,
+    system_prompt: str = "",
+    top_k: int = TOP_K,
+    num_ctx: int = NUM_CTX,
+    think: bool = THINK,
+) -> tuple[str, list[dict]]:
+    records = search_chunks(embed_text(question), top_k=top_k)
     context = "\n\n---\n\n".join(record["content"] for record in records)
     sources = sorted({record["filename"] for record in records})
     source_records = [
@@ -226,7 +233,9 @@ def generate_answer(question: str, history: list[dict] | None = None) -> tuple[s
                 f"sumber {record['filename']}) {record['content'][:150]}..."
             )
 
-    messages = [{"role": "system", "content": SYSTEM_PROMPT}]
+    admin_prompt = system_prompt.strip()
+    effective_prompt = f"{SYSTEM_PROMPT}\n\nInstruksi tambahan dari administrator:\n{admin_prompt}" if admin_prompt else SYSTEM_PROMPT
+    messages = [{"role": "system", "content": effective_prompt}]
     for item in (history or [])[-10:]:
         if item.get("role") in {"user", "assistant"} and isinstance(item.get("content"), str):
             messages.append({"role": item["role"], "content": item["content"][:2000]})
@@ -241,8 +250,8 @@ def generate_answer(question: str, history: list[dict] | None = None) -> tuple[s
     response = ollama.chat(
         model=LLM_MODEL,
         messages=messages,
-        options={"num_ctx": NUM_CTX},
-        think=THINK,
+        options={"num_ctx": num_ctx},
+        think=think,
         keep_alive=0,
     )
     return response["message"]["content"], source_records
