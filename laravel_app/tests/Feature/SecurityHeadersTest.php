@@ -24,12 +24,24 @@ class SecurityHeadersTest extends TestCase
         $this->assertMatchesRegularExpression("/script-src 'self' 'nonce-[A-Za-z0-9]+'/", $csp);
     }
 
-    public function test_inline_script_on_chat_page_carries_the_csp_nonce(): void
+    public function test_external_chat_scripts_carry_the_csp_nonce(): void
     {
         $response = $this->get('/');
         preg_match("/'nonce-([A-Za-z0-9]+)'/", $response->headers->get('Content-Security-Policy'), $m);
+        preg_match_all('/<script\\b[^>]*>/', $response->getContent(), $scripts);
+        $externalNonces = [];
+        foreach ($scripts[0] as $tag) {
+            if (! str_contains($tag, 'src=')) {
+                continue;
+            }
+            preg_match('/\\bnonce="([^"]+)"/', $tag, $nonce);
+            $externalNonces[] = $nonce[1] ?? null;
+        }
 
-        $response->assertSee('<script nonce="'.$m[1].'">', false);
+        $this->assertNotEmpty($externalNonces);
+        foreach ($externalNonces as $nonce) {
+            $this->assertSame($m[1], $nonce);
+        }
     }
 
     public function test_nonce_is_different_per_request(): void

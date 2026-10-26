@@ -39,10 +39,13 @@ class AdminChatbotTest extends TestCase
             ->get('/admin/ai-chat')
             ->assertOk()
             ->assertSee('Admin Surabaya')
-            ->assertSee('ada yang bisa dibantu')
+            ->assertSee('&quot;loggedIn&quot;:true', false)
+            ->assertSee('&quot;isAdmin&quot;:true', false)
+            ->assertSee('&quot;api&quot;:&quot;http://localhost/admin/ai-chat&quot;', false)
+            ->assertSee('&quot;logout&quot;:&quot;http://localhost/admin/logout&quot;', false)
+            ->assertSee('&quot;admin&quot;:&quot;http://localhost/admin&quot;', false)
             ->assertDontSee('>Masuk</a>', false)
-            ->assertDontSee('>Daftar</a>', false)
-            ->assertSee('Kembali ke area admin');
+            ->assertDontSee('>Daftar</a>', false);
     }
 
     public function test_admin_chatbot_saves_messages_to_admin_owned_history(): void

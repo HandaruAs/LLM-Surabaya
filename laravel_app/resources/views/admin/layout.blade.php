@@ -14,7 +14,7 @@
   <aside class="flex flex-col gap-6 border-b border-line bg-card px-4 py-5 md:sticky md:top-0 md:h-dvh md:border-r md:border-b-0">
     <div class="flex items-center justify-between">
       <div class="flex items-center gap-3">
-        <span class="grid size-10 place-items-center rounded-xl bg-brand text-paper shadow-sm"><x-icon name="landmark" class="size-5" /></span>
+        <img src="{{ asset('images/lambang-surabaya.webp') }}" alt="Lambang Kota Surabaya" width="31" height="40" class="h-10 w-auto shrink-0">
         <span class="font-serif text-lg font-semibold leading-tight">LLM Surabaya</span>
       </div>
       <span class="rounded-md bg-warning-bg px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wider text-warning-ink">Admin</span>

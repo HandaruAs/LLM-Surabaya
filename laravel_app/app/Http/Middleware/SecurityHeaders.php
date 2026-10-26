@@ -76,7 +76,8 @@ class SecurityHeaders
             // Tailwind/JS mengatur style lewat atribut; font dari Google Fonts.
             'style-src' => ["'self'", "'unsafe-inline'", 'https://fonts.googleapis.com', ...$vite],
             'font-src' => ["'self'", 'https://fonts.gstatic.com', 'data:'],
-            'img-src' => ["'self'", 'data:', 'blob:'],
+            // ...$vite: gambar yang di-import dari JS (mis. logo animasi pembuka) dimuat dari server Vite saat dev.
+            'img-src' => ["'self'", 'data:', 'blob:', ...$vite],
             'connect-src' => ["'self'", ...$connectVite],
             'object-src' => ["'none'"],
             'base-uri' => ["'self'"],

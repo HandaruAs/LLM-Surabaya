@@ -117,6 +117,7 @@ Route::prefix('admin')->name('admin.')->group(function () {
         // Chatbot AI admin memakai antarmuka chat utama dan menyimpan riwayat atas akun admin.
         Route::get('/ai-chat', fn () => view('chat', ['adminMode' => true]))->name('ai-chat');
         Route::post('/ai-chat/messages', [\App\Http\Controllers\Api\ChatController::class, 'store'])->name('ai-chat.messages');
+        Route::post('/ai-chat/chat', [\App\Http\Controllers\Api\ChatController::class, 'store'])->name('ai-chat.chat');
         Route::get('/ai-chat/sessions', [\App\Http\Controllers\Api\SessionController::class, 'index'])->name('ai-chat.sessions.index');
         Route::delete('/ai-chat/sessions', [\App\Http\Controllers\Api\SessionController::class, 'destroyAll'])->name('ai-chat.sessions.destroy-all');
         Route::get('/ai-chat/sessions/{id}/messages', [\App\Http\Controllers\Api\SessionController::class, 'messages'])->where('id', '[1-9][0-9]{0,17}')->name('ai-chat.sessions.messages');

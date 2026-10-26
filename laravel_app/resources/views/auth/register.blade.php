@@ -2,6 +2,8 @@
 
 @section('title', 'Daftar')
 @section('heading', 'Buat akun')
+@section('panel_image', 'images/auth-register.webp')
+@section('panel_position', 'center')
 @section('subheading', 'Dengan akun, riwayat percakapanmu tersimpan dan bisa dibuka dari perangkat lain.')
 
 @section('form')
@@ -33,7 +35,7 @@
 @endsection
 
 @section('footer')
-  Sudah punya akun? <a href="{{ route('login') }}" class="font-semibold text-brand hover:underline">Masuk</a>
+  Sudah punya akun? <a href="{{ route('login') }}" data-auth-switch="login" class="font-semibold text-brand hover:underline">Masuk</a>
 @endsection
 
 @push('scripts')
