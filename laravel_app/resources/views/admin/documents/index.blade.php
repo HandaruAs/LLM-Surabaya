@@ -30,12 +30,14 @@
       <x-alert type="success">{{ session('status') }}</x-alert>
     @endif
   @endif
-  @if (session('warning'))
-    <x-alert type="warning" title="Ada yang perlu diperiksa">{{ session('warning') }}</x-alert>
+  @if ($errors->has('document') || $errors->has('document.*'))
+    <x-alert type="danger" title="Dokumen tidak bisa diunggah">
+      {{ $errors->first('document') ?: $errors->first('document.*') }}
+    </x-alert>
   @endif
-  @error('document')
-    <x-alert type="danger" title="Dokumen tidak bisa diunggah">{{ $message }}</x-alert>
-  @enderror
+  @if (session('warning'))
+    <x-alert type="warning" title="Sebagian dokumen gagal diproses">{{ session('warning') }}</x-alert>
+  @endif
 
   {{-- Unggah dokumen --}}
   <section class="rounded-2xl border border-line bg-card p-5 shadow-card">
@@ -50,14 +52,14 @@
       <label id="dropzone" class="group flex cursor-pointer flex-col items-center justify-center gap-3 rounded-2xl border-2 border-dashed border-line bg-paper px-6 py-8 text-center transition hover:border-brand hover:bg-tint">
         <span class="grid size-12 place-items-center rounded-2xl bg-card text-brand shadow-card transition group-hover:scale-105"><x-icon name="upload" class="size-6" /></span>
         <span><span class="font-semibold text-brand">Pilih file</span> <span class="text-mute">atau seret ke sini</span></span>
-        <span class="text-xs text-mute">Dokumen akan langsung diindeks agar bisa dipakai chatbot sebagai rujukan.</span>
-        <input type="file" name="document" id="fileInput" required class="sr-only"
+        <span class="text-xs text-mute">Pilih hingga 20 dokumen PDF/XLSX. Setiap dokumen maks. 50 MB dan langsung diindeks.</span>
+        <input type="file" name="document[]" id="fileInput" required multiple class="sr-only"
                accept=".pdf,.xlsx,application/pdf,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet">
       </label>
 
       <div class="space-y-3">
-        <div class="text-xs font-semibold uppercase tracking-wider text-mute">File terpilih</div>
-        <div id="picked" class="rounded-xl border border-dashed border-line p-4 text-sm text-mute">Belum ada file dipilih.</div>
+        <div class="text-xs font-semibold uppercase tracking-wider text-mute">File terpilih <span id="fileCount"></span></div>
+        <div id="picked" class="max-h-48 space-y-2 overflow-y-auto rounded-xl border border-dashed border-line p-3 text-sm text-mute">Belum ada file dipilih.</div>
         <button type="submit" id="uploadBtn" disabled
                 class="inline-flex w-full cursor-pointer items-center justify-center gap-2 rounded-xl bg-brand px-4 py-2.5 text-sm font-semibold text-paper shadow-sm transition hover:bg-brand-strong active:translate-y-px disabled:cursor-not-allowed disabled:opacity-50">
           <x-icon name="upload" class="size-4" /><span id="uploadLabel">Unggah &amp; indeks</span>
@@ -166,42 +168,68 @@
     const zone = document.getElementById('dropzone');
     const picked = document.getElementById('picked');
     const btn = document.getElementById('uploadBtn');
+    const fileCount = document.getElementById('fileCount');
     const MAX = 50 * 1024 * 1024;
+    const MAX_FILES = 20;
     const ICONS = @json($fileIcons);
+    let selectedFiles = Array.from(input.files);
 
     function showPicked() {
-      const file = input.files[0];
+      const files = Array.from(input.files);
       picked.innerHTML = '';
-      if (!file) {
-        picked.className = 'rounded-xl border border-dashed border-line p-4 text-sm text-mute';
+      fileCount.textContent = files.length ? '(' + files.length + ')' : '';
+      if (!files.length) {
+        picked.className = 'max-h-48 space-y-2 overflow-y-auto rounded-xl border border-dashed border-line p-3 text-sm text-mute';
         picked.textContent = 'Belum ada file dipilih.';
         btn.disabled = true;
         return;
       }
-      const ext = (file.name.split('.').pop() || '').toLowerCase();
-      const ok = ['pdf', 'xlsx'].includes(ext) && file.size <= MAX;
-      const sheet = ext === 'xlsx';
 
-      picked.className = 'flex items-center gap-3 rounded-xl border border-line p-3';
-      const icon = document.createElement('span');
-      icon.className = 'grid size-9 shrink-0 place-items-center rounded-lg ' + (sheet ? 'bg-success-bg text-success-ink' : 'bg-danger-bg text-danger-ink');
-      icon.innerHTML = sheet ? ICONS.sheet : ICONS.file;
-      const text = document.createElement('div');
-      text.className = 'min-w-0 flex-1 text-sm';
-      const name = document.createElement('div');
-      name.className = 'truncate font-medium';
-      name.textContent = file.name;
-      const info = document.createElement('div');
-      info.className = 'text-xs ' + (ok ? 'text-mute' : 'text-danger-ink');
-      info.textContent = ok
-        ? ext.toUpperCase() + ' · ' + (file.size / 1024).toLocaleString('id-ID', { maximumFractionDigits: 1 }) + ' KB'
-        : (file.size > MAX ? 'Ukuran melebihi 50 MB.' : 'Format harus PDF atau XLSX.');
-      text.append(name, info);
-      picked.append(icon, text);
-      btn.disabled = !ok;
+      picked.className = 'max-h-48 space-y-2 overflow-y-auto rounded-xl border border-line p-3';
+      let allValid = files.length <= MAX_FILES;
+      files.forEach(file => {
+        const ext = (file.name.split('.').pop() || '').toLowerCase();
+        const ok = ['pdf', 'xlsx'].includes(ext) && file.size <= MAX;
+        allValid = allValid && ok;
+        const sheet = ext === 'xlsx';
+        const row = document.createElement('div');
+        row.className = 'flex items-center gap-3 rounded-lg bg-paper p-2';
+        const icon = document.createElement('span');
+        icon.className = 'grid size-8 shrink-0 place-items-center rounded-lg ' + (sheet ? 'bg-success-bg text-success-ink' : 'bg-danger-bg text-danger-ink');
+        icon.innerHTML = sheet ? ICONS.sheet : ICONS.file;
+        const text = document.createElement('div');
+        text.className = 'min-w-0 flex-1 text-sm';
+        const name = document.createElement('div');
+        name.className = 'truncate font-medium';
+        name.textContent = file.name;
+        const info = document.createElement('div');
+        info.className = 'text-xs ' + (ok ? 'text-mute' : 'text-danger-ink');
+        info.textContent = ok
+          ? ext.toUpperCase() + ' · ' + (file.size / 1024).toLocaleString('id-ID', { maximumFractionDigits: 1 }) + ' KB'
+          : (file.size > MAX ? 'Ukuran melebihi 50 MB.' : 'Format harus PDF atau XLSX.');
+        text.append(name, info);
+        row.append(icon, text);
+        picked.append(row);
+      });
+      if (files.length > MAX_FILES) {
+        const error = document.createElement('p');
+        error.className = 'text-xs text-danger-ink';
+        error.textContent = 'Maksimal 20 file dalam satu pengiriman.';
+        picked.append(error);
+      }
+      btn.disabled = !allValid;
     }
 
-    input.addEventListener('change', showPicked);
+    function setFiles(files, append = false) {
+      const incoming = Array.from(files);
+      selectedFiles = append ? [...selectedFiles, ...incoming] : incoming;
+      const dt = new DataTransfer();
+      selectedFiles.forEach(file => dt.items.add(file));
+      input.files = dt.files;
+      showPicked();
+    }
+
+    input.addEventListener('change', () => setFiles(input.files, true));
     ['dragenter', 'dragover'].forEach(type => zone.addEventListener(type, e => {
       e.preventDefault();
       zone.classList.add('border-brand', 'bg-tint');
@@ -211,11 +239,7 @@
       zone.classList.remove('border-brand', 'bg-tint');
     }));
     zone.addEventListener('drop', e => {
-      if (!e.dataTransfer.files.length) return;
-      const dt = new DataTransfer();
-      dt.items.add(e.dataTransfer.files[0]);
-      input.files = dt.files;
-      showPicked();
+      if (e.dataTransfer.files.length) setFiles(e.dataTransfer.files, true);
     });
     form.addEventListener('submit', () => {
       btn.disabled = true;

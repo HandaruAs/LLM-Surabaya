@@ -118,10 +118,10 @@ class AuthTest extends TestCase
         $this->assertGuest('web');
     }
 
-    public function test_chat_page_shows_link_back_to_admin_area_for_admin(): void
+    public function test_admin_chat_page_shows_link_back_to_admin_area(): void
     {
         $this->actingAs(User::factory()->admin()->create(), 'web')
-            ->get('/')->assertOk()->assertSee('Kembali ke area admin');
+            ->get('/admin/ai-chat')->assertOk()->assertSee('Kembali ke area admin');
     }
 
     public function test_admin_login_is_rate_limited(): void

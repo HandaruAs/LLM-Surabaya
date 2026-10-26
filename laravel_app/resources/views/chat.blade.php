@@ -4,7 +4,9 @@
 @include('partials.head')
 </head>
 @php
-    $user = auth('jwt')->user();
+    $adminMode = $adminMode ?? false;
+    $user = $adminMode ? auth('web')->user() : auth('jwt')->user();
+    $loggedIn = $user !== null;
     $initials = $user
         ? (collect(preg_split('/\s+/', trim($user->name)))->filter()->take(2)->map(fn ($p) => mb_strtoupper(mb_substr($p, 0, 1)))->implode('') ?: 'AN')
         : 'AN';
@@ -34,7 +36,7 @@
       <x-icon name="newchat" class="size-4" />Obrolan baru
     </button>
 
-    @auth('jwt')
+    @if ($loggedIn)
     <div class="flex min-h-[8rem] flex-1 flex-col">
       <div class="flex items-center justify-between px-1 pb-1 text-xs font-semibold uppercase tracking-wider text-mute">
         <span>Riwayat</span>
@@ -49,17 +51,18 @@
     @else
     {{-- Tamu: riwayat tidak disimpan. --}}
     <div class="flex flex-1 flex-col gap-3">
-      @if (auth('web')->user()?->isAdmin())
-      <a href="{{ route('admin.dashboard') }}" class="flex items-center justify-between rounded-xl border border-brand px-3.5 py-2.5 text-sm font-medium text-brand transition hover:bg-tint">
-        Kembali ke area admin <x-icon name="arrow" class="size-4" />
-      </a>
-      @endif
       <div class="rounded-2xl border border-line p-4">
         <div class="flex items-center gap-2 text-sm font-semibold"><x-icon name="clock" class="size-4 text-gold" />Riwayat tidak disimpan</div>
         <p class="mt-1.5 text-sm leading-6 text-mute">Kamu belum masuk. Percakapan ini akan hilang saat halaman ditutup atau dimuat ulang. Masuk atau daftar lewat tombol di kanan atas agar riwayat tersimpan.</p>
       </div>
     </div>
-    @endauth
+    @endif
+
+    @if ($adminMode)
+    <a href="{{ route('admin.dashboard') }}" class="flex items-center justify-between rounded-xl border border-brand px-3.5 py-2.5 text-sm font-medium text-brand transition hover:bg-tint">
+      Kembali ke area admin <x-icon name="arrow" class="size-4" />
+    </a>
+    @endif
 
     <div class="space-y-3 border-t border-line pt-3">
       <button id="btnFaq" type="button" class="flex w-full cursor-pointer items-center justify-between rounded-xl px-3 py-2 text-sm font-medium transition hover:bg-tint">
@@ -94,7 +97,7 @@
         <h1 id="title" class="truncate font-serif text-lg font-semibold">Obrolan baru</h1>
         <p id="subtitle" class="truncate text-xs text-mute">Tanya jawab keuangan daerah Kota Surabaya</p>
       </div>
-      @auth('jwt')
+      @if ($loggedIn)
       <div class="flex shrink-0 items-center gap-2 sm:gap-3">
         <div class="hidden items-center gap-2.5 sm:flex">
           <span class="grid size-8 shrink-0 place-items-center rounded-full bg-tint text-xs font-bold text-brand">{{ $initials }}</span>
@@ -103,19 +106,19 @@
             <div class="truncate text-xs text-mute">{{ $user->email }}</div>
           </div>
         </div>
-        <form method="POST" action="{{ route('logout') }}">
+        <form method="POST" action="{{ $adminMode ? route('admin.logout') : route('logout') }}">
           @csrf
           <button type="submit" class="inline-flex cursor-pointer items-center gap-1.5 rounded-xl border border-line px-3 py-2 text-sm font-semibold text-mute transition hover:border-danger hover:text-danger-ink">
             <x-icon name="logout" class="size-4" />Keluar
           </button>
         </form>
       </div>
-      @else
+      @elseif (! $adminMode)
       <div class="flex shrink-0 items-center gap-2">
         <a href="{{ route('login') }}" class="inline-flex items-center gap-1.5 rounded-xl border border-line px-3 py-2 text-sm font-semibold transition hover:bg-tint"><x-icon name="login" class="size-4" />Masuk</a>
         <a href="{{ route('register') }}" class="rounded-xl bg-brand px-3 py-2 text-sm font-semibold text-paper shadow-sm transition hover:bg-brand-strong">Daftar</a>
       </div>
-      @endauth
+      @endif
       <span class="absolute -bottom-px left-0 h-[3px] w-16 bg-gold"></span>
     </header>
 
@@ -139,7 +142,7 @@
         </div>
         <p class="mt-2 text-center text-xs leading-5 text-mute">
           Informasi bersifat panduan umum. Untuk keputusan penting, pastikan ke instansi resmi. Jangan menuliskan NIK atau nomor rekening.
-          @auth('jwt') Riwayat tersimpan di akunmu. @else Riwayat tidak disimpan karena kamu belum masuk. @endauth
+          @if ($loggedIn) Riwayat tersimpan di akunmu. @else Riwayat tidak disimpan karena kamu belum masuk. @endif
         </p>
       </div>
     </div>
@@ -187,19 +190,21 @@
 
 <script nonce="{{ Vite::cspNonce() }}">
 /* ---------- Koneksi ke API backend (laravel_app/API.md) ---------- */
-const API = @json(url('/api'));
+const ADMIN_MODE = @json($adminMode);
+const API = ADMIN_MODE ? @json(url('/admin/ai-chat')) : @json(url('/api'));
 const FB_KEY = 'llm-surabaya-feedback';
 const CSRF = document.querySelector('meta[name="csrf-token"]').content;
 
 // Login memakai JWT di cookie. Tamu boleh bertanya, tapi riwayatnya tidak disimpan:
 // percakapan tamu hanya ada di memori halaman ini dan dikirim ulang sebagai "history".
-const LOGGED_IN = @json($user !== null);
+const LOGGED_IN = @json($loggedIn);
 const USER_NAME = @json($user?->name);
 const ICONS = @json($icons);
 
 // Panggil API. Selalu mengembalikan { ok, status, data } — status 0 berarti server tidak bisa dihubungi.
 async function api(path, method = 'GET', body){
   try {
+    if (ADMIN_MODE) path = path.replace(/^\/sessions/, '/sessions').replace(/^\/chat$/, '/messages');
     const res = await fetch(API + path, {
       method,
       headers: { 'Accept': 'application/json', 'Content-Type': 'application/json', 'X-CSRF-TOKEN': CSRF, 'X-Requested-With': 'XMLHttpRequest' },
@@ -523,7 +528,7 @@ function renderWelcome(){
   pill.append(el('span', 'size-1.5 rounded-full bg-gold'), document.createTextNode(date));
   w.append(pill);
   const h = el('h2', 'mt-4 font-serif text-3xl font-semibold leading-tight tracking-tight md:text-4xl');
-  h.append(document.createTextNode(greet() + '. Apa yang ingin Anda ketahui?'));
+  h.append(document.createTextNode(ADMIN_MODE ? greet() + ', ada yang bisa dibantu?' : greet() + '. Apa yang ingin Anda ketahui?'));
   w.append(h);
   w.append(el('div', 'my-5 h-[3px] w-14 rounded-full bg-gold'));
   w.append(el('p', 'max-w-[60ch] text-mute', 'Tanyakan seputar pajak daerah, anggaran, dan retribusi Kota Surabaya. Jawaban dilengkapi rujukan agar mudah ditelusuri.'));
