@@ -437,24 +437,8 @@ export default function App({ cfg }) {
             <h1 className="truncate font-serif text-lg font-semibold">{title}</h1>
             <p className="truncate text-xs text-mute">{subtitle}</p>
           </div>
-          {cfg.loggedIn ? (
-            <div className="flex shrink-0 items-center gap-2 sm:gap-3">
-              <div className="hidden items-center gap-2.5 sm:flex">
-                <span className="grid size-8 shrink-0 place-items-center rounded-full bg-tint text-xs font-bold text-brand">{cfg.user.initials}</span>
-                <div className="max-w-[12rem] leading-tight">
-                  <div className="truncate text-sm font-semibold">{cfg.user.name}</div>
-                  <div className="truncate text-xs text-mute">{cfg.user.email}</div>
-                </div>
-              </div>
-              <form method="POST" action={cfg.routes.logout}>
-                <input type="hidden" name="_token" value={cfg.csrf} />
-                <button type="submit" className="inline-flex cursor-pointer items-center gap-1.5 rounded-xl border border-line px-3 py-2 text-sm font-semibold text-mute transition hover:border-danger hover:text-danger-ink">
-                  <Icon name="logout" className="size-4" />Keluar
-                </button>
-              </form>
-            </div>
-          ) : cfg.admin ? (
-            // Admin dari menu "Chatbot AI": tampilkan akun admin, bukan tombol Masuk/Daftar.
+          {cfg.admin ? (
+            // Admin dari menu "Chatbot AI": tampilkan akun admin dan tautan kembali.
             <div className="flex shrink-0 items-center gap-2 sm:gap-3">
               <div className="hidden items-center gap-2.5 sm:flex">
                 <span className="grid size-8 shrink-0 place-items-center rounded-full bg-tint text-xs font-bold text-brand">{cfg.admin.initials}</span>
@@ -470,6 +454,22 @@ export default function App({ cfg }) {
                 <input type="hidden" name="_token" value={cfg.csrf} />
                 <button type="submit" aria-label="Keluar" className="inline-flex cursor-pointer items-center gap-1.5 rounded-xl border border-line px-3 py-2 text-sm font-semibold text-mute transition hover:border-danger hover:text-danger-ink">
                   <Icon name="logout" className="size-4" /><span className="hidden sm:inline">Keluar</span>
+                </button>
+              </form>
+            </div>
+          ) : cfg.loggedIn ? (
+            <div className="flex shrink-0 items-center gap-2 sm:gap-3">
+              <div className="hidden items-center gap-2.5 sm:flex">
+                <span className="grid size-8 shrink-0 place-items-center rounded-full bg-tint text-xs font-bold text-brand">{cfg.user.initials}</span>
+                <div className="max-w-[12rem] leading-tight">
+                  <div className="truncate text-sm font-semibold">{cfg.user.name}</div>
+                  <div className="truncate text-xs text-mute">{cfg.user.email}</div>
+                </div>
+              </div>
+              <form method="POST" action={cfg.routes.logout}>
+                <input type="hidden" name="_token" value={cfg.csrf} />
+                <button type="submit" className="inline-flex cursor-pointer items-center gap-1.5 rounded-xl border border-line px-3 py-2 text-sm font-semibold text-mute transition hover:border-danger hover:text-danger-ink">
+                  <Icon name="logout" className="size-4" />Keluar
                 </button>
               </form>
             </div>
