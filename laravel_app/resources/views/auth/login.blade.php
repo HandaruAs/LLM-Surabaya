@@ -2,6 +2,8 @@
 
 @section('title', 'Masuk')
 @section('heading', 'Masuk')
+@section('panel_image', 'images/auth-login.webp')
+@section('panel_position', '0% 55%')
 @section('subheading', 'Masuk agar riwayat percakapanmu tersimpan dan bisa dibuka lagi.')
 
 @php($loginFailed = $errors->first('email') === 'Email atau kata sandi salah.')
@@ -35,7 +37,7 @@
 @endsection
 
 @section('footer')
-  Belum punya akun? <a href="{{ route('register') }}" class="font-semibold text-brand hover:underline">Daftar</a>
+  Belum punya akun? <a href="{{ route('register') }}" data-auth-switch="register" class="font-semibold text-brand hover:underline">Daftar</a>
 @endsection
 
 @push('scripts')
