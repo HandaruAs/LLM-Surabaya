@@ -1,6 +1,7 @@
 @import "tailwindcss";
 
 @source "../views/**/*.blade.php";
+@source "../js/**/*.{js,jsx}";
 
 /*
  * Token warna desain LLM Surabaya (mengikuti file desain LLM-Surabaya-UI).

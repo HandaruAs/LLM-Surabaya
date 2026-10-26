@@ -118,7 +118,8 @@ class UserAuthController extends Controller
         // Ganti token CSRF setelah login.
         $request->session()->regenerateToken();
 
-        return $redirect->withCookie(new SymfonyCookie(
+        // Penanda sekali pakai: halaman chat memutar animasi pembuka (logo) satu kali setelah login/daftar.
+        return $redirect->with('welcome_intro', true)->withCookie(new SymfonyCookie(
             name: (string) config('jwt.cookie'),
             value: $token,
             expire: $expiresAt,

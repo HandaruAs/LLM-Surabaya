@@ -2,23 +2,36 @@
 <html lang="id" class="h-full">
 <head>
 @include('partials.head', ['title' => trim($__env->yieldContent('title'))])
+@vite('resources/js/auth.js')
+{{-- Sembunyikan isi sebentar sampai animasi masuk dimulai (resources/js/auth.js).
+     Pengaman: kalau script gagal dimuat, isi tetap muncul setelah 1,5 detik. --}}
+<style nonce="{{ Vite::cspNonce() }}">.auth-anim [data-auth-card], .auth-anim [data-anim-panel] { opacity: 0; }</style>
+<script nonce="{{ Vite::cspNonce() }}">
+  if (!matchMedia('(prefers-reduced-motion: reduce)').matches) {
+    document.documentElement.classList.add('auth-anim');
+    setTimeout(() => document.documentElement.classList.remove('auth-anim'), 1500);
+  }
+</script>
 </head>
 <body class="min-h-full bg-paper font-sans text-ink">
 <div class="grid min-h-dvh lg:grid-cols-2">
 
-  {{-- Panel biru (disembunyikan di layar kecil) --}}
-  <div class="relative hidden flex-col justify-between overflow-hidden bg-brand p-10 text-paper lg:flex">
-    <svg class="pointer-events-none absolute -right-10 -top-6 h-80 w-80 text-paper opacity-10" viewBox="0 0 230 230" aria-hidden="true"><polygon points="115 6 224 56 6 56" fill="currentColor"/><rect x="34" y="70" width="18" height="110" rx="9" fill="currentColor"/><rect x="82" y="70" width="18" height="110" rx="9" fill="currentColor"/><rect x="130" y="70" width="18" height="110" rx="9" fill="currentColor"/><rect x="178" y="70" width="18" height="110" rx="9" fill="currentColor"/><rect x="22" y="194" width="186" height="16" rx="8" fill="currentColor"/></svg>
+  {{-- Panel foto (disembunyikan di layar kecil). Foto per halaman: @section('panel_image') di login/register. --}}
+  <div class="relative hidden flex-col justify-between overflow-hidden bg-ink p-10 text-white lg:flex">
+    <img data-anim-photo src="{{ asset(trim($__env->yieldContent('panel_image', 'images/auth-login.webp'))) }}" alt=""
+         class="pointer-events-none absolute inset-0 size-full object-cover" style="object-position: {{ trim($__env->yieldContent('panel_position', 'center')) }}">
+    {{-- Lapisan gelap supaya teks putih tetap terbaca di atas foto. --}}
+    <div class="pointer-events-none absolute inset-0 bg-gradient-to-t from-black/85 via-black/40 to-black/30"></div>
 
-    <a href="{{ route('chat') }}" class="relative flex items-center gap-3 self-start">
-      <span class="grid size-10 place-items-center rounded-xl bg-paper text-brand"><x-icon name="landmark" class="size-5" /></span>
-      <span class="font-serif text-lg font-semibold">LLM Surabaya</span>
+    <a href="{{ route('chat') }}" data-anim-panel class="relative flex items-center gap-3 self-start">
+      <img src="{{ asset('images/lambang-surabaya.webp') }}" alt="Lambang Kota Surabaya" width="31" height="40" class="h-10 w-auto shrink-0 drop-shadow">
+      <span class="font-serif text-lg font-semibold drop-shadow">LLM Surabaya</span>
     </a>
 
-    <div class="relative">
+    <div data-anim-panel class="relative [text-shadow:0_1px_12px_rgb(0_0_0/0.35)]">
       <div class="mb-4 h-[3px] w-14 rounded-full bg-gold"></div>
       <h2 class="max-w-sm font-serif text-3xl font-semibold leading-tight">Tanya jawab keuangan daerah, lengkap dengan rujukan.</h2>
-      <p class="mt-3 max-w-sm text-sm leading-6 opacity-90">Tanyakan seputar pajak, anggaran, dan retribusi Kota Surabaya. Jawaban disusun dari dokumen resmi.</p>
+      <p class="mt-3 max-w-sm text-sm leading-6 text-white/85">Tanyakan seputar pajak, anggaran, dan retribusi Kota Surabaya. Jawaban disusun dari dokumen resmi.</p>
       <ul class="mt-6 space-y-2.5 text-sm">
         <li class="flex items-center gap-2.5"><x-icon name="check" class="size-[18px]" />Jawaban selalu dengan rujukan dokumen</li>
         <li class="flex items-center gap-2.5"><x-icon name="check" class="size-[18px]" />Riwayat percakapan tersimpan di akunmu</li>
@@ -26,26 +39,26 @@
       </ul>
     </div>
 
-    <p class="relative text-xs opacity-75">Dinas Komunikasi dan Informatika Kota Surabaya</p>
+    <p data-anim-panel class="relative text-xs text-white/75">Dinas Komunikasi dan Informatika Kota Surabaya</p>
   </div>
 
   {{-- Form --}}
   <div class="flex items-center justify-center px-4 py-10 sm:p-10">
-    <div class="w-full max-w-sm">
-      <a href="{{ route('chat') }}" class="mb-8 flex items-center gap-3 lg:hidden">
-        <span class="grid size-10 place-items-center rounded-xl bg-brand text-paper shadow-sm"><x-icon name="landmark" class="size-5" /></span>
+    <div data-auth-card class="w-full max-w-sm">
+      <a href="{{ route('chat') }}" data-anim class="mb-8 flex items-center gap-3 lg:hidden">
+        <img src="{{ asset('images/lambang-surabaya.webp') }}" alt="Lambang Kota Surabaya" width="31" height="40" class="h-10 w-auto shrink-0">
         <span class="font-serif text-lg font-semibold">LLM Surabaya</span>
       </a>
 
-      <h1 class="font-serif text-3xl font-semibold">@yield('heading')</h1>
-      <p class="mt-2 text-sm text-mute">@yield('subheading')</p>
+      <h1 data-anim class="font-serif text-3xl font-semibold">@yield('heading')</h1>
+      <p data-anim class="mt-2 text-sm text-mute">@yield('subheading')</p>
 
-      @yield('alert')
+      <div data-anim>@yield('alert')</div>
 
-      @yield('form')
+      <div data-anim>@yield('form')</div>
 
-      <p class="mt-6 text-center text-sm text-mute">@yield('footer')</p>
-      <p class="mt-3 text-center text-sm">
+      <p data-anim class="mt-6 text-center text-sm text-mute">@yield('footer')</p>
+      <p data-anim class="mt-3 text-center text-sm">
         <a href="{{ route('chat') }}" class="text-mute hover:text-ink hover:underline">Lanjut tanpa masuk</a>
       </p>
     </div>
