@@ -118,10 +118,15 @@ class AuthTest extends TestCase
         $this->assertGuest('web');
     }
 
-    public function test_chat_page_shows_link_back_to_admin_area_for_admin(): void
+    public function test_admin_chat_page_receives_admin_session_configuration(): void
     {
         $this->actingAs(User::factory()->admin()->create(), 'web')
-            ->get('/')->assertOk()->assertSee('Kembali ke area admin');
+            ->get('/admin/ai-chat')
+            ->assertOk()
+            ->assertSee('&quot;loggedIn&quot;:true', false)
+            ->assertSee('&quot;isAdmin&quot;:true', false)
+            ->assertSee('&quot;api&quot;:&quot;http://localhost/admin/ai-chat&quot;', false)
+            ->assertSee('&quot;logout&quot;:&quot;http://localhost/admin/logout&quot;', false);
     }
 
     public function test_admin_login_is_rate_limited(): void
@@ -164,7 +169,10 @@ class AuthTest extends TestCase
         $this->assertSame(2, substr_count($cookie->getValue(), '.'), 'Bentuk JWT: header.payload.signature');
 
         $this->withUnencryptedCookie(config('jwt.cookie'), $cookie->getValue())
-            ->get('/')->assertSee('Budi')->assertSee('Keluar');
+            ->get('/')
+            ->assertSee('Budi')
+            ->assertSee('&quot;loggedIn&quot;:true', false)
+            ->assertSee('&quot;isAdmin&quot;:false', false);
     }
 
     public function test_register_cannot_set_admin_role(): void
@@ -248,11 +256,15 @@ class AuthTest extends TestCase
 
     public function test_chat_page_shows_guest_or_user_state(): void
     {
-        $this->get('/')->assertOk()->assertSee('Riwayat tidak disimpan')->assertSee('/register')
-            ->assertDontSee('Kembali ke area admin');
+        $this->get('/')->assertOk()
+            ->assertSee('&quot;loggedIn&quot;:false', false)
+            ->assertSee('&quot;register&quot;:&quot;http://localhost/register&quot;', false)
+            ->assertSee('&quot;isAdmin&quot;:false', false);
 
         $user = User::factory()->create(['name' => 'Rina Pengguna']);
-        $this->actingAs($user, 'jwt')->get('/')->assertOk()->assertSee('Rina Pengguna')->assertSee('Keluar')
-            ->assertDontSee('Riwayat tidak disimpan');
+        $this->actingAs($user, 'jwt')->get('/')->assertOk()
+            ->assertSee('Rina Pengguna')
+            ->assertSee('&quot;loggedIn&quot;:true', false)
+            ->assertSee('&quot;isAdmin&quot;:false', false);
     }
 }

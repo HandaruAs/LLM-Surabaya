@@ -6,6 +6,7 @@ use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Http\Client\RequestException;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Storage;
 
 /**
  * Klien HTTP ke layanan RAG internal (Python, hanya di localhost).
@@ -25,15 +26,31 @@ class RagClient
      */
     public function ask(string $question, array $history = []): RagAnswer
     {
+        $config = $this->loadAiConfig();
+        $activeRules = array_values(array_filter($config['rules'] ?? [], fn ($rule) => ! empty($rule['on'])));
+        $promptParts = [];
+        if (trim((string) ($config['role'] ?? '')) !== '') {
+            $promptParts[] = trim($config['role']);
+        }
+        if ($activeRules !== []) {
+            $promptParts[] = "Aturan jawaban:\n".implode("\n", array_map(fn ($rule) => '- '.$rule['text'], $activeRules));
+        }
+
         try {
+            $payload = [
+                'question' => $question,
+                'history' => array_values($history),
+                'system_prompt' => implode("\n\n", $promptParts),
+                'top_k' => $config['top_k'] ?? 3,
+                'num_ctx' => $config['num_ctx'] ?? 512,
+                'show_context' => (bool) ($config['show_context'] ?? false),
+                'think' => (bool) ($config['think'] ?? false),
+            ];
             $response = Http::baseUrl($this->baseUrl)
                 ->acceptJson()
                 ->timeout($this->timeout)
                 ->connectTimeout(5)
-                ->post('/chat', [
-                    'question' => $question,
-                    'history' => array_values($history),
-                ])
+                ->post('/chat', $payload)
                 ->throw();
         } catch (ConnectionException|RequestException $e) {
             Log::warning('Layanan RAG gagal dipanggil', ['error' => $e->getMessage()]);
@@ -51,6 +68,20 @@ class RagClient
         }
 
         return new RagAnswer($answer, $this->normalizeSources($response->json('sources', [])));
+    }
+
+    /** Baca konfigurasi yang disimpan halaman admin, dengan default kompatibel. */
+    private function loadAiConfig(): array
+    {
+        $default = ['role' => '', 'rules' => [], 'top_k' => 3, 'num_ctx' => 512, 'show_context' => false, 'think' => false];
+        $disk = Storage::disk('local');
+        if (! $disk->exists('ai-config.json')) {
+            return $default;
+        }
+
+        $saved = json_decode($disk->get('ai-config.json'), true);
+
+        return array_merge($default, is_array($saved) ? $saved : []);
     }
 
     /** Cek kesehatan layanan RAG (GET /health). */

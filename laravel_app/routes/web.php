@@ -1,13 +1,12 @@
 <?php
 
+use App\Http\Controllers\Admin\AdminAccountController;
 use App\Http\Controllers\Admin\AuthController;
 use App\Http\Controllers\Admin\DocumentController;
 use App\Http\Controllers\Auth\UserAuthController;
 use App\Http\Middleware\EnsureUserIsAdmin;
 use App\Http\Middleware\UseJwtGuard;
-use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Route;
 use Illuminate\Support\Facades\Storage;
 
@@ -48,6 +47,10 @@ Route::prefix('admin')->name('admin.')->group(function () {
         // Area admin hanya untuk kelola dokumen: /admin langsung ke halaman itu.
         Route::get('/', fn () => redirect()->route('admin.documents.index'))->name('dashboard');
         Route::get('/documents', [DocumentController::class, 'index'])->name('documents.index');
+        Route::get('/accounts', [AdminAccountController::class, 'index'])->name('accounts.index');
+        Route::post('/accounts', [AdminAccountController::class, 'store'])->name('accounts.store');
+        Route::put('/accounts/{account}', [AdminAccountController::class, 'update'])->whereNumber('account')->name('accounts.update');
+        Route::delete('/accounts/{account}', [AdminAccountController::class, 'destroy'])->whereNumber('account')->name('accounts.destroy');
         Route::post('/documents', [DocumentController::class, 'store'])->name('documents.store');
         Route::delete('/documents/{document}', [DocumentController::class, 'destroy'])
             ->whereNumber('document')
@@ -111,39 +114,16 @@ Route::prefix('admin')->name('admin.')->group(function () {
             return response()->json(['ok' => true]);
         });
 
-        // Halaman Chatbot AI (uji konfigurasi)
-        Route::get('/ai-chat', fn () => view('admin.ai-chat', ['config' => $aiLoad()]))->name('ai-chat');
+        // Chatbot AI admin memakai antarmuka chat utama dan menyimpan riwayat atas akun admin.
+        Route::get('/ai-chat', fn () => view('chat', ['adminMode' => true]))->name('ai-chat');
+        Route::post('/ai-chat/messages', [\App\Http\Controllers\Api\ChatController::class, 'store'])->name('ai-chat.messages');
+        Route::post('/ai-chat/chat', [\App\Http\Controllers\Api\ChatController::class, 'store'])->name('ai-chat.chat');
+        Route::get('/ai-chat/sessions', [\App\Http\Controllers\Api\SessionController::class, 'index'])->name('ai-chat.sessions.index');
+        Route::delete('/ai-chat/sessions', [\App\Http\Controllers\Api\SessionController::class, 'destroyAll'])->name('ai-chat.sessions.destroy-all');
+        Route::get('/ai-chat/sessions/{id}/messages', [\App\Http\Controllers\Api\SessionController::class, 'messages'])->where('id', '[1-9][0-9]{0,17}')->name('ai-chat.sessions.messages');
+        Route::patch('/ai-chat/sessions/{id}', [\App\Http\Controllers\Api\SessionController::class, 'update'])->where('id', '[1-9][0-9]{0,17}')->name('ai-chat.sessions.update');
+        Route::delete('/ai-chat/sessions/{id}', [\App\Http\Controllers\Api\SessionController::class, 'destroy'])->where('id', '[1-9][0-9]{0,17}')->name('ai-chat.sessions.destroy');
+        Route::post('/ai-chat/sessions/{id}/retry', [\App\Http\Controllers\Api\ChatController::class, 'retry'])->where('id', '[1-9][0-9]{0,17}')->name('ai-chat.sessions.retry');
 
-        Route::post('/ai-chat', function (Request $request) use ($aiLoad, $aiPrompt, $toBackend, $pyUrl, $pyChatPath) {
-            $question = $request->validate(['question' => 'required|string|max:1000'])['question'];
-            $cfg    = $aiLoad();
-            $prompt = $aiPrompt($cfg);
-            $start  = microtime(true);
-
-            try {
-                $res = Http::timeout(180)->acceptJson()->post(rtrim($pyUrl, '/') . $pyChatPath, $toBackend($question, $cfg, $prompt));
-            } catch (ConnectionException $e) {
-                return response()->json(['message' => "Backend Python tidak bisa dihubungi di {$pyUrl}. Pastikan uvicorn berjalan."], 502);
-            }
-            if ($res->failed()) {
-                return response()->json(['message' => 'Backend Python membalas error (' . $res->status() . '). Cek terminal uvicorn.'], 502);
-            }
-
-            $body = $res->json();
-            $answer = is_array($body) ? ($body['answer'] ?? $body['response'] ?? $body['jawaban'] ?? $body['reply'] ?? null) : null;
-
-            return response()->json([
-                'answer'     => $answer ?? $res->body(),
-                'context'    => is_array($body) ? ($body['context'] ?? $body['contexts'] ?? $body['konteks'] ?? null) : null,
-                'prompt'     => $prompt,
-                'elapsed_ms' => (int) ((microtime(true) - $start) * 1000),
-                // Ringkasan konfigurasi terbaru, dipakai halaman Chatbot AI untuk memperbarui panel kanan.
-                'summary'    => [
-                    'aktif'   => count(array_filter($cfg['rules'], fn ($r) => !empty($r['on']))),
-                    'top_k'   => $cfg['top_k'],
-                    'num_ctx' => $cfg['num_ctx'],
-                ],
-            ]);
-        });
     });
 });

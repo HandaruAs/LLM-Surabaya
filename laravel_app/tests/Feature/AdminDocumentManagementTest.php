@@ -60,6 +60,24 @@ class AdminDocumentManagementTest extends TestCase
             ->assertSee('Terindeks');
     }
 
+    public function test_admin_can_upload_multiple_documents_in_one_submission(): void
+    {
+        $this->actingAs(User::factory()->admin()->create())
+            ->post('/admin/documents', [
+                'document' => [
+                    UploadedFile::fake()->create('laporan-a.pdf', 10, 'application/pdf'),
+                    UploadedFile::fake()->create('laporan-b.xlsx', 10, 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'),
+                ],
+            ])
+            ->assertRedirect('/admin/documents');
+
+        $this->assertDatabaseHas('admin_documents', ['original_name' => 'laporan-a.pdf', 'status' => 'indexed']);
+        $this->assertDatabaseHas('admin_documents', ['original_name' => 'laporan-b.xlsx', 'status' => 'indexed']);
+        $this->assertDatabaseCount('admin_documents', 2);
+
+        Http::assertSentCount(2);
+    }
+
     public function test_admin_can_upload_xlsx_file(): void
     {
         $this->actingAs(User::factory()->admin()->create())

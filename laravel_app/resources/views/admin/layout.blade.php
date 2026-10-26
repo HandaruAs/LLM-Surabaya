@@ -20,7 +20,7 @@
       <span class="rounded-md bg-warning-bg px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wider text-warning-ink">Admin</span>
     </div>
 
-    {{-- Menu admin: kelola dokumen, konfigurasi AI, chatbot AI. --}}
+    {{-- Menu admin: kelola dokumen, konfigurasi AI, chatbot AI, dan akun admin. --}}
     <nav class="flex flex-col gap-1">
       <div class="px-3 pb-1 text-[11px] font-semibold uppercase tracking-wider text-mute">Menu</div>
 
@@ -34,9 +34,14 @@
         <svg class="size-[18px]" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 6h10"/><path d="M18 6h2"/><circle cx="16" cy="6" r="2"/><path d="M4 12h2"/><path d="M10 12h10"/><circle cx="8" cy="12" r="2"/><path d="M4 18h12"/><path d="M20 18h0"/><circle cx="18" cy="18" r="2"/></svg>Konfigurasi AI
       </a>
 
-      <a href="{{ route('chat') }}" @if (request()->routeIs('admin.ai-chat')) aria-current="page" @endif
+      <a href="{{ route('admin.ai-chat') }}" @if (request()->routeIs('admin.ai-chat')) aria-current="page" @endif
          class="flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium transition {{ request()->routeIs('admin.ai-chat') ? 'bg-brand text-paper shadow-sm' : 'text-ink hover:bg-tint' }}">
         <svg class="size-[18px]" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12a8 8 0 0 1-11.6 7.1L4 20l1-4.6A8 8 0 1 1 21 12Z"/></svg>Chatbot AI
+      </a>
+
+      <a href="{{ route('admin.accounts.index') }}" @if (request()->routeIs('admin.accounts.*')) aria-current="page" @endif
+         class="flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium transition {{ request()->routeIs('admin.accounts.*') ? 'bg-brand text-paper shadow-sm' : 'text-ink hover:bg-tint' }}">
+        <x-icon name="user" class="size-[18px]" />Manajemen admin
       </a>
     </nav>
   </aside>

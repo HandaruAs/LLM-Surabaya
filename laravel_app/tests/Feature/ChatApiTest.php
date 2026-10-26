@@ -12,6 +12,7 @@ use Illuminate\Http\Client\Request;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\Storage;
 use Tests\TestCase;
 
 class ChatApiTest extends TestCase
@@ -25,6 +26,7 @@ class ChatApiTest extends TestCase
         parent::setUp();
         $this->user = User::factory()->create();
         config(['chat.rag.url' => 'http://rag.test']);
+        Storage::fake('local');
     }
 
     /** Request sebagai user yang login (default: $this->user). */
