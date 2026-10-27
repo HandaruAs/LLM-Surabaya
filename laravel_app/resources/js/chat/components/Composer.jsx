@@ -82,7 +82,7 @@ export default function Composer({ inputRef, value, setValue, onSend, busy, erro
         </div>
         <p className="mt-2 text-center text-xs leading-5 text-mute">
           Informasi bersifat panduan umum. Untuk keputusan penting, pastikan ke instansi resmi. Jangan menuliskan NIK atau nomor rekening.
-          {loggedIn ? ' Riwayat tersimpan di akunmu.' : isAdmin ? ' Mode uji admin: riwayat tidak disimpan.' : ' Riwayat tidak disimpan karena kamu belum masuk.'}
+          {isAdmin ? ' Mode uji admin: riwayat tersimpan di akun admin.' : loggedIn ? ' Riwayat tersimpan di akunmu.' : ' Riwayat tidak disimpan karena kamu belum masuk.'}
         </p>
       </div>
     </div>
