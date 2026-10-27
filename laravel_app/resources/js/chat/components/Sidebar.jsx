@@ -66,13 +66,11 @@ export default function Sidebar({
         ) : (
           // Tamu: riwayat tidak disimpan.
           <div className="flex flex-1 flex-col gap-3">
-            {/* Admin: tombol kembali ke area admin ada di topbar kanan. */}
+            {/* Admin selalu dianggap login (riwayat tersimpan di akun admin), jadi bagian ini hanya untuk tamu. */}
             <div className="rounded-2xl border border-line p-4">
-              <div className="flex items-center gap-2 text-sm font-semibold"><Icon name="clock" className="size-4 text-gold" />{cfg.isAdmin ? 'Mode uji admin' : 'Riwayat tidak disimpan'}</div>
+              <div className="flex items-center gap-2 text-sm font-semibold"><Icon name="clock" className="size-4 text-gold" />Riwayat tidak disimpan</div>
               <p className="mt-1.5 text-sm leading-6 text-mute">
-                {cfg.isAdmin
-                  ? 'Kamu sedang mencoba chatbot sebagai admin. Percakapan uji ini tidak disimpan ke riwayat dan hilang saat halaman dimuat ulang.'
-                  : 'Kamu belum masuk. Percakapan ini akan hilang saat halaman ditutup atau dimuat ulang. Masuk atau daftar lewat tombol di kanan atas agar riwayat tersimpan.'}
+                Kamu belum masuk. Percakapan ini akan hilang saat halaman ditutup atau dimuat ulang. Masuk atau daftar lewat tombol di kanan atas agar riwayat tersimpan.
               </p>
             </div>
           </div>
