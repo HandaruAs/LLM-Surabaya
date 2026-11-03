@@ -39,6 +39,26 @@
   </form>
 </section>
 
+<div id="confirm-modal" class="fixed inset-0 z-50 hidden items-center justify-center bg-black/40 p-4" role="dialog" aria-modal="true" aria-labelledby="confirm-title">
+  <div class="w-full max-w-md rounded-2xl border border-line bg-card p-6 shadow-card">
+    <div class="flex items-start gap-4">
+      <span class="flex size-11 shrink-0 items-center justify-center rounded-full bg-danger-bg text-danger-ink">
+        <svg xmlns="http://www.w3.org/2000/svg" class="size-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <path d="M3 6h18M8 6V4a1 1 0 0 1 1-1h6a1 1 0 0 1 1 1v2m2 0v14a1 1 0 0 1-1 1H7a1 1 0 0 1-1-1V6h12ZM10 11v6M14 11v6"/>
+        </svg>
+      </span>
+      <div>
+        <h3 id="confirm-title" class="font-serif text-lg font-semibold">Hapus akun admin?</h3>
+        <p id="confirm-message" class="mt-1 text-sm text-mute"></p>
+      </div>
+    </div>
+    <div class="mt-6 flex justify-end gap-2">
+      <button type="button" id="confirm-cancel" class="cursor-pointer rounded-xl border border-line px-4 py-2 text-sm font-semibold transition hover:bg-tint">Batal</button>
+      <button type="button" id="confirm-ok" class="cursor-pointer rounded-xl bg-danger-ink px-4 py-2 text-sm font-semibold text-paper transition hover:opacity-90">Ya, hapus</button>
+    </div>
+  </div>
+</div>
+
 <section class="overflow-hidden rounded-2xl border border-line bg-card shadow-card">
   <div class="flex flex-wrap items-baseline justify-between gap-2 border-b border-line px-5 py-4">
     <h2 class="font-serif text-lg font-semibold">Daftar akun admin</h2>
@@ -73,7 +93,8 @@
                 <div class="flex justify-end gap-2">
                   <button type="button" data-edit="edit-admin-{{ $account->id }}" class="cursor-pointer rounded-lg border border-brand px-3 py-1.5 text-xs font-semibold text-brand transition hover:bg-tint">Edit</button>
                   @if (auth('web')->id() !== $account->id)
-                    <form method="POST" action="{{ route('admin.accounts.destroy', $account) }}" onsubmit="return confirm('Hapus akun {{ addslashes($account->email) }}? Seluruh riwayat chat milik akun ini juga akan terhapus dan tidak dapat dipulihkan.');">
+                  <form method="POST" action="{{ route('admin.accounts.destroy', $account) }}"
+                  data-confirm="Hapus akun {{ $account->email }}? Seluruh riwayat chat milik akun ini juga akan terhapus dan tidak dapat dipulihkan.">
                       @csrf
                       @method('DELETE')
                       <button type="submit" class="cursor-pointer rounded-lg border border-danger-ink/30 px-3 py-1.5 text-xs font-semibold text-danger-ink transition hover:bg-danger-bg">Hapus</button>
@@ -119,12 +140,43 @@
 @endsection
 
 @push('scripts')
-<script nonce="{{ request()->attributes->get('csp_nonce') }}">
+<script nonce="{{ Vite::cspNonce() }}">
   document.querySelectorAll('[data-edit]').forEach(button => {
     button.addEventListener('click', () => {
-      const row = document.getElementById(button.dataset.edit);
-      row.classList.toggle('hidden');
+      document.getElementById(button.dataset.edit).classList.toggle('hidden');
     });
   });
+
+  // Modal konfirmasi hapus
+  const modal = document.getElementById('confirm-modal');
+  const message = document.getElementById('confirm-message');
+  let pendingForm = null;
+
+  const openModal = (form) => {
+    pendingForm = form;
+    message.textContent = form.dataset.confirm;
+    modal.classList.remove('hidden');
+    modal.classList.add('flex');
+    document.getElementById('confirm-cancel').focus();
+  };
+  const closeModal = () => {
+    pendingForm = null;
+    modal.classList.add('hidden');
+    modal.classList.remove('flex');
+  };
+
+  document.querySelectorAll('form[data-confirm]').forEach(form => {
+    form.addEventListener('submit', e => {
+      e.preventDefault();
+      openModal(form);
+    });
+  });
+
+  document.getElementById('confirm-ok').addEventListener('click', () => {
+    if (pendingForm) pendingForm.submit();
+  });
+  document.getElementById('confirm-cancel').addEventListener('click', closeModal);
+  modal.addEventListener('click', e => { if (e.target === modal) closeModal(); });
+  document.addEventListener('keydown', e => { if (e.key === 'Escape') closeModal(); });
 </script>
 @endpush
