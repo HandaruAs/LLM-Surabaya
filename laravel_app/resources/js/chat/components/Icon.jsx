@@ -1,21 +1,67 @@
-import { createContext, useContext } from 'react';
+import {
+  Activity, ArrowDown, ArrowRight, ArrowUp, BookOpen, Bot, ChartPie, Check, ChevronDown, ChevronRight, CircleCheck,
+  CircleHelp, Clock, Command, Copy, FileSpreadsheet, FileText, House, Info, Landmark, LayoutDashboard, LoaderCircle,
+  Lock, LogIn, LogOut, Mail, MapPin, Menu, MessageSquare, Monitor, Moon, PanelLeft, Phone, Quote, Receipt, RotateCcw,
+  Search, SendHorizontal, ShieldCheck, Sparkles, SquarePen, Sun, ThumbsDown, ThumbsUp, Timer, Trash2, TriangleAlert,
+  Upload, User, Wallet, X,
+} from 'lucide-react';
 
-// Path SVG berasal dari App\Support\Icons (dikirim server lewat data-config), bukan dari input user.
-export const IconsContext = createContext({});
+// Ikon dari lucide-react. Komponen lain cukup memanggil <Icon name="..." />.
+const ICONS = {
+  activity: Activity,
+  admin: LayoutDashboard,
+  alert: TriangleAlert,
+  arrow: ArrowRight,
+  arrowDown: ArrowDown,
+  arrowUp: ArrowUp,
+  book: BookOpen,
+  bot: Bot,
+  check: Check,
+  checkCircle: CircleCheck,
+  chevron: ChevronRight,
+  chevronDown: ChevronDown,
+  clock: Clock,
+  command: Command,
+  copy: Copy,
+  down: ThumbsDown,
+  file: FileText,
+  help: CircleHelp,
+  home: House,
+  info: Info,
+  landmark: Landmark,
+  loader: LoaderCircle,
+  lock: Lock,
+  login: LogIn,
+  logout: LogOut,
+  mail: Mail,
+  menu: Menu,
+  message: MessageSquare,
+  monitor: Monitor,
+  moon: Moon,
+  newchat: SquarePen,
+  phone: Phone,
+  pie: ChartPie,
+  pin: MapPin,
+  quote: Quote,
+  receipt: Receipt,
+  refresh: RotateCcw,
+  search: Search,
+  send: SendHorizontal,
+  sheet: FileSpreadsheet,
+  shield: ShieldCheck,
+  sidebar: PanelLeft,
+  sparkles: Sparkles,
+  sun: Sun,
+  timer: Timer,
+  trash: Trash2,
+  up: ThumbsUp,
+  upload: Upload,
+  user: User,
+  wallet: Wallet,
+  x: X,
+};
 
-export default function Icon({ name, className = 'size-4' }) {
-  const icons = useContext(IconsContext);
-  return (
-    <svg
-      className={className + ' shrink-0'}
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="2"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      aria-hidden="true"
-      dangerouslySetInnerHTML={{ __html: icons[name] || '' }}
-    />
-  );
+export default function Icon({ name, className = 'size-4', strokeWidth = 2 }) {
+  const Cmp = ICONS[name] || Info;
+  return <Cmp className={className + ' shrink-0'} strokeWidth={strokeWidth} aria-hidden="true" />;
 }

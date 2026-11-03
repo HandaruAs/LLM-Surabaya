@@ -3,6 +3,7 @@
 use App\Http\Controllers\Admin\AdminAccountController;
 use App\Http\Controllers\Admin\AuthController;
 use App\Http\Controllers\Admin\DocumentController;
+use App\Http\Controllers\Admin\OverviewController;
 use App\Http\Controllers\Auth\UserAuthController;
 use App\Http\Middleware\EnsureUserIsAdmin;
 use App\Http\Middleware\UseJwtGuard;
@@ -46,6 +47,8 @@ Route::prefix('admin')->name('admin.')->group(function () {
     Route::middleware(['auth:web', EnsureUserIsAdmin::class])->group(function () {
         // Area admin hanya untuk kelola dokumen: /admin langsung ke halaman itu.
         Route::get('/', fn () => redirect()->route('admin.documents.index'))->name('dashboard');
+        // Ringkasan: angka & grafik aktivitas chatbot.
+        Route::get('/overview', OverviewController::class)->name('overview');
         Route::get('/documents', [DocumentController::class, 'index'])->name('documents.index');
         Route::get('/accounts', [AdminAccountController::class, 'index'])->name('accounts.index');
         Route::post('/accounts', [AdminAccountController::class, 'store'])->name('accounts.store');
