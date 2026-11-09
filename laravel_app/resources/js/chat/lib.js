@@ -9,12 +9,35 @@ export const MSG = {
 
 // Kartu contoh pertanyaan di layar sambutan. Kosongkan array ini untuk menyembunyikannya.
 // icon = nama ikon di App\Support\Icons.
+// tone = warna aksen kartu (brand / gold / info / rose).
 export const TOPICS = [
-  { icon: 'pie', title: 'APBD Surabaya', q: 'Berapa total pendapatan dalam APBD Kota Surabaya tahun 2025?' },
-  { icon: 'receipt', title: 'Pajak daerah', q: 'Apa saja jenis pajak daerah di Kota Surabaya?' },
-  { icon: 'wallet', title: 'Retribusi', q: 'Apa perbedaan pajak daerah dan retribusi daerah?' },
-  { icon: 'home', title: 'PBB-P2', q: 'Apa itu PBB-P2 dan siapa yang wajib membayarnya?' },
+  { icon: 'pie', title: 'APBD Surabaya', tone: 'brand', q: 'Berapa total pendapatan dalam APBD Kota Surabaya tahun 2025?' },
+  { icon: 'receipt', title: 'Pajak daerah', tone: 'gold', q: 'Apa saja jenis pajak daerah di Kota Surabaya?' },
+  { icon: 'wallet', title: 'Retribusi', tone: 'info', q: 'Apa perbedaan pajak daerah dan retribusi daerah?' },
+  { icon: 'home', title: 'PBB-P2', tone: 'rose', q: 'Apa itu PBB-P2 dan siapa yang wajib membayarnya?' },
 ];
+
+// Kelompokkan riwayat berdasarkan tanggal terakhir diperbarui.
+export function groupSessions(list) {
+  const now = new Date();
+  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
+  const groups = [
+    { label: 'Hari ini', items: [] },
+    { label: 'Kemarin', items: [] },
+    { label: '7 hari terakhir', items: [] },
+    { label: '30 hari terakhir', items: [] },
+    { label: 'Lebih lama', items: [] },
+  ];
+  list.forEach((s) => {
+    const ts = Date.parse(s.updated_at) || Date.now();
+    const d = new Date(ts);
+    const day = new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime();
+    const diff = Math.round((today - day) / 86400000);
+    const g = diff <= 0 ? 0 : diff === 1 ? 1 : diff < 7 ? 2 : diff < 30 ? 3 : 4;
+    groups[g].items.push(s);
+  });
+  return groups.filter((g) => g.items.length);
+}
 
 // Chip di kolom tulis: mengisi contoh pertanyaan.
 export const CHIPS = [
@@ -79,7 +102,7 @@ export function dayLabel(iso) {
 export function greet(name) {
   const h = new Date().getHours();
   const timeGreet = h < 11 ? 'Selamat pagi' : h < 15 ? 'Selamat siang' : h < 18 ? 'Selamat sore' : 'Selamat malam';
-  return name ? `${timeGreet} ${name}` : timeGreet;
+  return name ? `${timeGreet}, ${name}` : timeGreet;
 }
 
 // Nama sumber untuk ditampilkan: buang awalan internal dokumen admin ("admin:5:").

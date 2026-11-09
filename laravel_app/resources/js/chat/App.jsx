@@ -1,12 +1,15 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { AnimatePresence } from 'motion/react';
+import { AnimatePresence, motion } from 'motion/react';
 import Icon from './components/Icon';
 import Sidebar from './components/Sidebar';
 import Welcome from './components/Welcome';
 import Entry from './components/Entry';
 import Composer from './components/Composer';
-import { ConfirmDialog, FaqDialog } from './components/Dialogs';
+import Header from './components/Header';
+import { ConfirmDialog } from './components/Dialogs';
 import { useToast } from './components/Toaster';
+import { useThemeMode } from './hooks';
+import { nextTheme } from '../theme';
 import { MSG, fromApi, loadJson, makeApi, saveJson, shortTitle, sourceName } from './lib';
 
 // Logika sama dengan script lama di chat.blade.php, hanya ditulis ulang sebagai komponen React.
@@ -17,10 +20,26 @@ import { MSG, fromApi, loadJson, makeApi, saveJson, shortTitle, sourceName } fro
 const TITLE_KEY = 'llm-surabaya-titles'; // judul lengkap per sesi (pertanyaan pertama)
 const FB_KEY = 'llm-surabaya-feedback';  // suka / tidak suka per id pesan, hanya di browser
 const SIDE_KEY = 'llm-surabaya-side-w', SIDE_MIN = 240, SIDE_MAX = 520, SIDE_DEF = 304;
+const COLLAPSE_KEY = 'llm-surabaya-side-collapsed';
 
 const keyOf = (id) => (id === null ? 'draft' : String(id));
 let localSeq = 0;
 const localId = () => 'l' + (++localSeq);
+
+// Percakapan yang sedang dibuka dicatat di alamat halaman (?sesi=ID), jadi saat
+// halaman di-refresh percakapan yang sama dibuka lagi. Setelah login, alamatnya
+// tanpa ?sesi sehingga selalu mulai dari obrolan baru.
+const URL_PARAM = 'sesi';
+function urlSessionId() {
+  const v = new URLSearchParams(window.location.search).get(URL_PARAM);
+  return v && /^[1-9][0-9]{0,17}$/.test(v) ? Number(v) : null;
+}
+function syncUrl(id) {
+  const url = new URL(window.location.href);
+  if (id === null || id === undefined) url.searchParams.delete(URL_PARAM);
+  else url.searchParams.set(URL_PARAM, String(id));
+  if (url.href !== window.location.href) window.history.replaceState(window.history.state, '', url);
+}
 
 function useIsDesktop() {
   const query = '(min-width: 768px)';
@@ -50,10 +69,12 @@ export default function App({ cfg }) {
   const [formErr, setFormErr] = useState('');
   const [input, setInput] = useState('');
   const [menuOpen, setMenuOpen] = useState(false);
-  const [faqOpen, setFaqOpen] = useState(false);
   const [confirm, setConfirmState] = useState(null);
   const [fullTitles, setFullTitles] = useState(() => loadJson(TITLE_KEY, {}));
   const [fb, setFb] = useState(() => loadJson(FB_KEY, {}));
+  const [collapsed, setCollapsed] = useState(() => loadJson(COLLAPSE_KEY, false) === true);
+  const [atBottom, setAtBottom] = useState(true);
+  const [theme, setTheme] = useThemeMode();
 
   // Nilai terbaru untuk dipakai di dalam fungsi async.
   const activeRef = useRef(null);
@@ -69,11 +90,12 @@ export default function App({ cfg }) {
   const colRef = useRef(null);
   const stickRef = useRef(false); // true = layar ikut turun saat isi bertambah
 
-  const setActive = (id) => { activeRef.current = id; setActiveState(id); };
+  const setActive = (id) => { activeRef.current = id; setActiveState(id); syncUrl(id); };
   const setBusy = (v) => { busyRef.current = v; setBusyState(v); };
 
   useEffect(() => saveJson(TITLE_KEY, fullTitles), [fullTitles]);
   useEffect(() => saveJson(FB_KEY, fb), [fb]);
+  useEffect(() => saveJson(COLLAPSE_KEY, collapsed), [collapsed]);
 
   const setFullTitle = useCallback((id, text) => {
     if (!text || titlesRef.current[id] === text) return;
@@ -246,7 +268,7 @@ export default function App({ cfg }) {
     if (r.data && r.data.session_id) target = adopt(r.data.session_id, r.data.title, sid, text);
 
     if (r.ok) {
-      append(target, fromApi(r.data.message));
+      append(target, { ...fromApi(r.data.message), fresh: true });
       setError(target, '');
     } else if (r.status === 503 && r.data.session_id) {
       // Pertanyaan sudah tersimpan, AI belum menjawab -> tombol "Kirim ulang".
@@ -282,7 +304,7 @@ export default function App({ cfg }) {
     const r = await api('/sessions/' + id + '/retry', 'POST');
 
     if (r.ok) {
-      append(key, fromApi(r.data.message));
+      append(key, { ...fromApi(r.data.message), fresh: true });
       setError(key, '');
       setSessions((s) => [...s.filter((x) => x.id === id), ...s.filter((x) => x.id !== id)]);
     } else if (r.status === 422 || r.status === 409) {
@@ -307,11 +329,15 @@ export default function App({ cfg }) {
   useEffect(() => {
     if (started.current) return; // StrictMode (dev) menjalankan efek dua kali
     started.current = true;
-    if (!cfg.loggedIn) return;
+    if (!cfg.loggedIn) { syncUrl(null); return; } // tamu tidak punya riwayat tersimpan
     (async () => {
+      // Saat halaman dibuka (mis. setelah login) mulai dari obrolan baru. Kalau
+      // halaman di-refresh saat sebuah percakapan terbuka (?sesi=ID), buka lagi percakapan itu.
+      const wanted = urlSessionId();
       const { ok, list } = await refreshSessions();
       if (!ok) setFormErr(MSG.offline);
-      if (list.length) await openChat(list[0].id);
+      if (wanted !== null && list.some((x) => x.id === wanted)) await openChat(wanted);
+      else if (ok) syncUrl(null);
     })();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -339,7 +365,16 @@ export default function App({ cfg }) {
   }, []);
   const onScroll = () => {
     const s = streamRef.current;
-    if (s && ms.length) stickRef.current = s.scrollHeight - s.scrollTop - s.clientHeight < 120;
+    if (!s) return;
+    const near = s.scrollHeight - s.scrollTop - s.clientHeight < 120;
+    if (ms.length) stickRef.current = near;
+    setAtBottom(near);
+  };
+  const toBottom = () => {
+    const s = streamRef.current;
+    if (!s) return;
+    stickRef.current = true;
+    s.scrollTo({ top: s.scrollHeight, behavior: 'smooth' });
   };
 
   /* ---------- Sidebar: tutup dengan Esc (mobile) & ubah lebar (desktop) ---------- */
@@ -384,7 +419,8 @@ export default function App({ cfg }) {
   const active = sessions.find((s) => s.id === activeId);
   const questions = ms.filter((m) => m.role === 'user').length;
   const title = active ? shortTitle(titleOf(active)) : ms.length ? shortTitle(ms[0].content) : 'Obrolan baru';
-  const firstSource = ms.find((m) => m.role === 'assistant' && m.sources && m.sources.length);
+  // Nama dokumen rujukan hanya ditampilkan di mode uji admin.
+  const firstSource = cfg.admin ? ms.find((m) => m.role === 'assistant' && m.sources && m.sources.length) : null;
   const subtitle = questions
     ? questions + ' pertanyaan' + (firstSource ? ' · rujukan: ' + sourceName(firstSource.sources[0]) : '')
     : 'Tanya jawab keuangan daerah Kota Surabaya';
@@ -400,12 +436,17 @@ export default function App({ cfg }) {
   });
 
   return (
-    <div className="relative grid h-dvh grid-cols-1 md:grid-cols-[var(--side-w)_minmax(0,1fr)]">
+    <div
+      className="relative grid h-dvh grid-cols-1 bg-aurora transition-[grid-template-columns] duration-300 ease-out md:grid-cols-[var(--grid-cols)]"
+      style={{ '--grid-cols': (collapsed ? '0px' : 'var(--side-w)') + ' minmax(0,1fr)' }}
+    >
       <Sidebar
         cfg={cfg}
         isDesktop={isDesktop}
         open={menuOpen}
+        collapsed={collapsed}
         onClose={() => setMenuOpen(false)}
+        onCollapse={() => setCollapsed(true)}
         sessions={sessions}
         titleOf={titleOf}
         activeId={activeId}
@@ -415,77 +456,43 @@ export default function App({ cfg }) {
         onOpen={(id) => openChat(id)}
         onDelete={delChat}
         onClearAll={clearAll}
-        onFaq={() => { setMenuOpen(false); setFaqOpen(true); }}
       />
 
-      <div
-        role="separator"
-        aria-orientation="vertical"
-        aria-label="Ubah lebar sidebar"
-        onPointerDown={onResizeStart}
-        onDoubleClick={() => { setSide(SIDE_DEF); saveSide(); }}
-        className="absolute inset-y-0 z-20 hidden w-1.5 cursor-col-resize touch-none transition-colors hover:bg-brand/40 active:bg-brand/60 md:left-[calc(var(--side-w)-3px)] md:block"
-      />
+      {!collapsed ? (
+        <div
+          role="separator"
+          aria-orientation="vertical"
+          aria-label="Ubah lebar sidebar"
+          onPointerDown={onResizeStart}
+          onDoubleClick={() => { setSide(SIDE_DEF); saveSide(); }}
+          className="absolute inset-y-0 z-20 hidden w-1.5 cursor-col-resize touch-none transition-colors hover:bg-brand/40 active:bg-brand/60 md:left-[calc(var(--side-w)-3px)] md:block"
+        />
+      ) : null}
 
       {/* ================= Area percakapan ================= */}
-      <section className="flex min-h-0 min-w-0 flex-col">
-        <header className="relative flex items-center gap-3 border-b border-line bg-card px-4 py-3.5 md:px-6">
-          <button type="button" onClick={() => setMenuOpen(true)} aria-label="Buka menu" className="inline-grid size-9 cursor-pointer place-items-center rounded-lg text-mute transition hover:bg-tint hover:text-ink md:hidden">
-            <Icon name="menu" className="size-5" />
-          </button>
-          <div className="min-w-0 flex-1">
-            <h1 className="truncate font-serif text-lg font-semibold">{title}</h1>
-            <p className="truncate text-xs text-mute">{subtitle}</p>
-          </div>
-          {cfg.admin ? (
-            // Admin dari menu "Chatbot AI": tampilkan akun admin dan tautan kembali.
-            <div className="flex shrink-0 items-center gap-2 sm:gap-3">
-              <div className="hidden items-center gap-2.5 sm:flex">
-                <span className="grid size-8 shrink-0 place-items-center rounded-full bg-tint text-xs font-bold text-brand">{cfg.admin.initials}</span>
-                <div className="max-w-[12rem] leading-tight">
-                  <div className="truncate text-sm font-semibold">{cfg.admin.name}</div>
-                  <div className="truncate text-xs text-mute">Admin</div>
-                </div>
-              </div>
-              <a href={cfg.routes.admin} className="inline-flex items-center gap-1.5 rounded-xl bg-brand px-3 py-2 text-sm font-semibold text-paper shadow-sm transition hover:bg-brand-strong">
-                <Icon name="arrow" className="size-4 rotate-180" />Area admin
-              </a>
-              <form method="POST" action={cfg.routes.adminLogout}>
-                <input type="hidden" name="_token" value={cfg.csrf} />
-                <button type="submit" aria-label="Keluar" className="inline-flex cursor-pointer items-center gap-1.5 rounded-xl border border-line px-3 py-2 text-sm font-semibold text-mute transition hover:border-danger hover:text-danger-ink">
-                  <Icon name="logout" className="size-4" /><span className="hidden sm:inline">Keluar</span>
-                </button>
-              </form>
-            </div>
-          ) : cfg.loggedIn ? (
-            <div className="flex shrink-0 items-center gap-2 sm:gap-3">
-              <div className="hidden items-center gap-2.5 sm:flex">
-                <span className="grid size-8 shrink-0 place-items-center rounded-full bg-tint text-xs font-bold text-brand">{cfg.user.initials}</span>
-                <div className="max-w-[12rem] leading-tight">
-                  <div className="truncate text-sm font-semibold">{cfg.user.name}</div>
-                  <div className="truncate text-xs text-mute">{cfg.user.email}</div>
-                </div>
-              </div>
-              <form method="POST" action={cfg.routes.logout}>
-                <input type="hidden" name="_token" value={cfg.csrf} />
-                <button type="submit" className="inline-flex cursor-pointer items-center gap-1.5 rounded-xl border border-line px-3 py-2 text-sm font-semibold text-mute transition hover:border-danger hover:text-danger-ink">
-                  <Icon name="logout" className="size-4" />Keluar
-                </button>
-              </form>
-            </div>
-          ) : (
-            <div className="flex shrink-0 items-center gap-2">
-              <a href={cfg.routes.login} className="inline-flex items-center gap-1.5 rounded-xl border border-line px-3 py-2 text-sm font-semibold transition hover:bg-tint"><Icon name="login" className="size-4" />Masuk</a>
-              <a href={cfg.routes.register} className="rounded-xl bg-brand px-3 py-2 text-sm font-semibold text-paper shadow-sm transition hover:bg-brand-strong">Daftar</a>
-            </div>
-          )}
-          <span className="absolute -bottom-px left-0 h-[3px] w-16 bg-gold" />
-        </header>
+      <section className="relative flex min-h-0 min-w-0 flex-col">
+        <Header
+          cfg={cfg}
+          title={title}
+          subtitle={subtitle}
+          theme={theme}
+          onTheme={() => setTheme(nextTheme(theme))}
+          showExpand={isDesktop && collapsed}
+          onExpand={() => setCollapsed(false)}
+          onMenu={() => setMenuOpen(true)}
+        />
 
-        <div ref={streamRef} onScroll={onScroll} className="flex-1 overflow-y-auto px-4 py-8 md:px-8">
-          <div ref={colRef} className="mx-auto flex max-w-content flex-col gap-10">
+        <div ref={streamRef} onScroll={onScroll} className="scroll-thin flex-1 overflow-y-auto px-4 pt-8 pb-6 md:px-8">
+          <div ref={colRef} className="mx-auto flex max-w-content flex-col gap-9">
             {loading ? (
-              <div className="text-sm text-mute">Memuat percakapan…</div>
+              <div className="flex flex-col gap-6" aria-label="Memuat percakapan">
+                {[0, 1].map((i) => (
+                  <div key={i} className="space-y-4">
+                    <div className="ml-auto h-11 w-2/3 animate-pulse rounded-3xl bg-tint" />
+                    <div className="h-32 w-full animate-pulse rounded-3xl bg-card" />
+                  </div>
+                ))}
+              </div>
             ) : !ms.length ? (
               <Welcome key={'w' + viewKey} userName={cfg.user?.name || cfg.admin?.name} onAsk={send} />
             ) : (
@@ -497,6 +504,8 @@ export default function App({ cfg }) {
                     q={q}
                     a={a}
                     state={state}
+                    logo={cfg.logo}
+                    showSources={Boolean(cfg.admin)}
                     error={errors[key] || MSG.unanswered}
                     feedback={a && a.id ? fb[a.id] || '' : ''}
                     onFeedback={(v) => setFb((all) => { const n = { ...all }; if (v) n[a.id] = v; else delete n[a.id]; return n; })}
@@ -508,6 +517,23 @@ export default function App({ cfg }) {
             )}
           </div>
         </div>
+
+        {/* Tombol kembali ke pesan terbaru saat sedang membaca ke atas */}
+        <AnimatePresence>
+          {!atBottom && ms.length ? (
+            <motion.button
+              type="button"
+              onClick={toBottom}
+              initial={{ opacity: 0, y: 10, scale: 0.9 }}
+              animate={{ opacity: 1, y: 0, scale: 1 }}
+              exit={{ opacity: 0, y: 10, scale: 0.9 }}
+              aria-label="Ke pesan terbaru"
+              className="absolute bottom-40 left-1/2 z-10 inline-flex -translate-x-1/2 cursor-pointer items-center gap-1.5 rounded-full border border-line bg-card px-3.5 py-2 text-xs font-semibold text-ink shadow-lift transition hover:text-brand"
+            >
+              <Icon name="arrowDown" className="size-4" />Pesan terbaru
+            </motion.button>
+          ) : null}
+        </AnimatePresence>
 
         <Composer
           inputRef={inputRef}
@@ -521,9 +547,7 @@ export default function App({ cfg }) {
         />
       </section>
 
-      <FaqDialog open={faqOpen} onClose={() => setFaqOpen(false)} faq={cfg.faq} />
       <ConfirmDialog confirm={confirm} onDone={finishConfirm} />
     </div>
   );
 }
-

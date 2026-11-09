@@ -8,10 +8,15 @@ export default defineConfig({
         laravel({
             // resources/js/chat/main.jsx = halaman chat versi React (dipakai di chat.blade.php).
             // resources/js/auth.js = animasi halaman Masuk/Daftar (dipakai di auth/layout.blade.php).
-            input: ['resources/css/app.css', 'resources/js/app.js', 'resources/js/chat/main.jsx', 'resources/js/auth.js'],
+            // resources/js/admin/main.js = interaksi & grafik area admin (dipakai di admin/layout.blade.php).
+            input: ['resources/css/app.css', 'resources/js/app.js', 'resources/js/chat/main.jsx', 'resources/js/auth.js', 'resources/js/admin/main.js'],
             refresh: true,
         }),
         react(),
         tailwindcss(),
     ],
+    build: {
+        // Grafik (recharts) dan halaman chat cukup besar; dipecah per halaman lewat import dinamis.
+        chunkSizeWarningLimit: 900,
+    },
 });
